@@ -1,6 +1,9 @@
 16c71
 
 DEBUG   EQU     1 ;константа отладки в готовом коде 0
+; 13 декабря 1997 года
+; В исходнике были сделаны изменения помеченые 8/16
+; для новой платы
 ;Всевозможные скорости приема/передачи
 ;Вычисление делителя для частоты опроса на приеме
 ;  Топроса/(Скорость*Размер выборки)
@@ -40,31 +43,33 @@ FSR     equ     04H
 PORTA   equ     05H
 PORTB   equ     06H
 PORTC   equ     07H
-	BeginStateC	EQU	01000000B
-;RC0	RC0		- запись регистра второго банка передачи тока покоя
-;RC1	RC1		- запуск одновибратора импульса переключения реле
-;RC2    RC2
-;RC3	#STB		- строб записи сигнала по адресу RC0-1-2
-;RC4	SEL	(MUX)	- выбор D+ или D- с помощью мультиплексора
-;			  и одновременно сигнал #WR/RD
-;RC5	#CSD2		- выбор второго DAC
+	BeginStateC	EQU	01100100B
+;RC0	#WRTC21		- запись регистра второго банка передачи тока покоя
+;RC1	#WRR1		- запуск одновибратора импульса переключения реле
+;RC2    #RS
+;RC3	#SMX1		- включение мультиплексора D+ D-
+;RC4	SEL1	(MUX)	- выбор D+ или D- с помощью мультиплексора
+;RC5	#WRTC11		- запись регистра первого банка передачи тока покоя
 ;RC6	TXD1		- передача последовательного порта
 ;RC7	RXD1            - прием    последовательного порта
-
+ ;	WRR		EQU	1
+ ;	SMX		EQU     3	;//Danger Two-line regim
 	MUX		EQU	4	;//разряд управления мультиплексором
-	CSD2		EQU	5
+	STB		EQU	3	;//8/16 дешифратор
+ ;	WRTC11		EQU	5
+ ;	WRTC21		EQU	0
+ ;	EnableRele	EQU	2
+;	DataTransmBit 	EQU 02H	;//бит передачи (мультип)
+;	StrobeTransm    EQU 01H ;//бит стробирования
 PORTD   equ     08H
 PORTE   equ     09H
 	BeginStateE	EQU	00000100B	;начальное состояние порта E
-;RE0	SDD		- данные для DAC-ов
-;RE1	CLD		- синхро для DAC-ов
-;RE2	#CSD1		- выбор первого DAC-а
-	DAC_DATA	EQU	0
-	DAC_CLC		EQU	1
 	DAC_CSS		EQU	2
+	DAC_CLC		EQU	1
+	DAC_DATA	EQU	0
 PCLATH  equ     0AH
 INTCON  equ     0BH
-	;биты управляющего регистра прерываний
+        ;биты управляющего регистра прерываний
 	GIE     equ     7
 	PEIE    equ     6
         T0IE    equ     5
@@ -110,7 +115,7 @@ OPTION  equ     01H
 	INTEDG  EQU 6 ;Interrupt edge select
 TRISA   equ     05H
 ;значение для начальной инициализации порта A
-	InitPortA       EQU 11100011B	;// линии 2 и 3 на подтверждение приема
+	InitPortA       EQU 11110011B	;// линии 2 и 3 на подтверждение приема
 
 TRISB   equ     06H
 ;значение для начальной инициализации порта B
@@ -457,19 +462,20 @@ TimerInterrupt:
 ;Алгоритм с записью (передачей) и считыванием датчика минуса
 WithWrite:
 ;извлечение данных передачи из очереди
-	BTFSS	FalseEnter,PuskRele
-	GOTO	NeRele
-	MOVF	DataRele,W
-	MOVWF	PORTD
-	BCF	FalseEnter,PuskRele
-	BCF	PORTCProm,WRR
-	MOVF	PORTCProm,W
-	MOVWF	PORTC           ;//задний строб записи
+;8/16	BTFSS	FalseEnter,PuskRele
+;8/16	GOTO	NeRele
+;8/16	MOVF	DataRele,W
+;8/16	MOVWF	PORTD
+;8/16	BCF	FalseEnter,PuskRele
+;8/16	BCF	PORTCProm,WRR
+;8/16	MOVF	PORTCProm,W
+;8/16	MOVWF	PORTC           ;//задний строб записи
 				;//данные на порту D должны быть не менее 2 mks
 				;//сейчас около 3.6mks
 
 
-NeRele:	MOVF	PORTB,W
+;8/16 NeRele:
+	MOVF	PORTB,W
 	MOVWF   ReadInterrupt
 
 	BSF     STATUS,RP0
@@ -483,44 +489,65 @@ NeRele:	MOVF	PORTB,W
 	BCF     STATUS,RP0      ;выбор НУЛЕВОЙ страницы для обращения
 	MOVF    INDF,W          ;данные с головы очереди ->W
 	ANDLW   0FH
-	MOVWF	CounterTransmit	;ЯЧЕЙКА ИСПОЛЬЗУЕТСЯ НЕ ПО ПРЯМОМУ НАЗНАЧЕНИЮ
-	SWAPF	TokPokoya,W
-	ANDLW	0F0H
-	IORWF	CounterTransmit,W
+;8/16	MOVWF	CounterTransmit	;ЯЧЕЙКА ИСПОЛЬЗУЕТСЯ НЕ ПО ПРЯМОМУ НАЗНАЧЕНИЮ
+;8/16	SWAPF	TokPokoya,W
+;8/16	ANDLW	0F0H
+;8/16	IORWF	CounterTransmit,W
 	MOVWF	PORTD
 
-	BSF	PORTCProm,MUX	;переключение мультиплексора на D-
+;8/16	BSF	PORTCProm,MUX	;переключение мультиплексора на D-
 	MOVF	PORTCProm,W
+	IORLW	((1 SHL MUX)+(1 SHL STB)) ;8/16 MUX=1 STB=1
+	MOVWF	PORTC
+	ANDLW	0F8H		;8/16 ADR=0
+	MOVWF	PORTC		;8/16
+
+;8/16	BCF	PORTCProm,STB;запись данных в первые четыре канала
+;8/16	MOVF	PORTCProm,W
+	ANDLW	(0FFH AND NOT(1 SHL STB)) ;8/16 stb=0
 	MOVWF	PORTC
 
-	BSF	PORTCProm,WRTC11;запись данных в первые четыре канала
-	MOVF	PORTCProm,W
-	MOVWF	PORTC
 
+;8/16	SWAPF   INDF,W          ;данные с головы очереди ->W
+;8/16	ANDLW   0FH
+;8/16	MOVWF	CounterTransmit	;ЯЧЕЙКА ИСПОЛЬЗУЕТСЯ НЕ ПО ПРЯМОМУ НАЗНАЧЕНИЮ
+
+;8/16	BSF	PORTCProm,STB;задний фронт записи в первые четыре канала
+;8/16	MOVF	PORTCProm,W
+	IORLW   (1 SHL STB)     ;8/16 stb=1
+	MOVWF	PORTCProm       ;8/16
+	MOVWF	PORTC
+	IORLW	01H		;8/16 adr=1
+	MOVWF	PORTCProm       ;8/16
+	MOVWF	PORTC           ;8/16
+
+;8/16	MOVF	TokPokoya,W
+;8/16	ANDLW	0F0H
+;8/16	IORWF	CounterTransmit,W
 	SWAPF   INDF,W          ;данные с головы очереди ->W
 	ANDLW   0FH
 	MOVWF	CounterTransmit	;ЯЧЕЙКА ИСПОЛЬЗУЕТСЯ НЕ ПО ПРЯМОМУ НАЗНАЧЕНИЮ
-
-	BCF	PORTCProm,WRTC11;задний фронт записи в первые четыре канала
-	MOVF	PORTCProm,W
-	MOVWF	PORTC
-
-	MOVF	TokPokoya,W
-	ANDLW	0F0H
-	IORWF	CounterTransmit,W
 	MOVWF	PORTD
 
 
-	BSF	PORTCProm,WRTC21;запись данных во вторые четыре канала
+	BCF	PORTCProm,STB;запись данных во вторые четыре канала
 	MOVF	PORTCProm,W
 	MOVWF	PORTC
 
 	MOVLW   ConstTransmit          ;перезагрузка константы
 	MOVWF   CounterTransmit
 
-	BCF	PORTCProm,WRTC21;задний фронт записи во вторые четыре канала
+;8/16	BSF	PORTCProm,STB;задний фронт записи во вторые четыре канала
 	MOVF	PORTCProm,W
+	IORLW	(1 SHL STB)	;8/16 stb=1
 	MOVWF	PORTC
+	ANDLW	0F8H 		;8/16 adr =0
+	IORLW	04H             ;8/16 adr =4
+	MOVWF	PORTC           ;8/16
+	ANDLW	(0FFH AND NOT(1 SHL STB)) ;8/16 stb=0
+	MOVWF	PORTCProm       ;8/16
+	MOVWF	PORTC           ;8/16
+
 
 
 ;---------------
@@ -542,28 +569,28 @@ NeRele:	MOVF	PORTB,W
 
 	BCF	STATUS,RP0
 	MOVF	PORTB,W
-	MOVWF   CounDivTransmit20 ;ne po pramomu naznacheniyu
-	BSF	PORTCProm,SMX	;perekluchaem na komparatori two-line regim
-	MOVF	PORTCProm,W
-	MOVWF	PORTC
+;8/16	MOVWF   CounDivTransmit20 ;ne po pramomu naznacheniyu
+;8/16	BSF	PORTCProm,SMX	;perekluchaem na komparatori two-line regim
+;8/16	MOVF	PORTCProm,W
+;8/16	MOVWF	PORTC
 
-	MOVF    CounDivTransmit20,W ;ne po prjamomu naznacheniu
+;8/16	MOVF    CounDivTransmit20,W ;ne po prjamomu naznacheniu
 ;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
 	CALL    PutWordTransmit
 
-	MOVF	079H,W
-	MOVWF	078H
-	BCF	STATUS,RP0
-	MOVF	PORTB,W		;sostojanie avarii
-	BSF	STATUS,RP0
-	MOVWF	079H
-	ANDWF	078H,W
-	BTFSC	STATUS,Z
-	GOTO	NoErrorTwo
-	IORWF	07AH,F
-	BCF	STATUS,RP0
-	BSF	FalseEnter,ErrorTwoLine
-NoErrorTwo:
+;8/16	MOVF	079H,W
+;8/16	MOVWF	078H
+;8/16	BCF	STATUS,RP0
+;8/16	MOVF	PORTB,W		;sostojanie avarii
+;8/16	BSF	STATUS,RP0
+;8/16	MOVWF	079H
+;8/16	ANDWF	078H,W
+;8/16	BTFSC	STATUS,Z
+;8/16	GOTO	NoErrorTwo
+;8/16	IORWF	07AH,F
+;8/16	BCF	STATUS,RP0
+;8/16	BSF	FalseEnter,ErrorTwoLine
+;8/16 NoErrorTwo:
 	BCF	STATUS,RP0
 	MOVLW	ConstDiv20
 	MOVWF 	CounDivTransmit20
@@ -609,9 +636,10 @@ VseChitali:
 ;RC5	#WRTC11		- запись регистра первого банка передачи тока покоя
 ;RC6	TXD1		- передача последовательного порта
 ;RC7	RXD1            - прием    последовательного порта
-	BSF	PORTCProm,WRR
-	MOVLW	11000110B
+;8/16	BSF	PORTCProm,WRR
+	MOVLW	11100100B
 	ANDWF   PORTCProm,W
+	IORLW	00100100B
 	MOVWF	PORTCProm
 	MOVWF	PORTC
 
@@ -689,17 +717,17 @@ PutWordTransmit:
 	MOVWF   HvostTransmit
 ;//отладочный код
 
-	SUBWF   HeadTransmit,W
-	BTFSS	STATUS,Z
-	GOTO	NoOverFlowTr
+;	SUBWF   HeadTransmit,W
+;	BTFSS	STATUS,Z
+;	GOTO	NoOverFlowTr
 ;//--
-	BCF	STATUS,RP0
-	MOVF	PORTAProm,W
-	XORLW	00010000B
-	MOVWF	PORTAProm
-	MOVWF	PORTA
-	BSF	STATUS,RP0
-NoOverFlowTr:
+;	BCF	STATUS,RP0
+;	MOVF	PORTAProm,W
+;	XORLW	00010000B
+;	MOVWF	PORTAProm
+;	MOVWF	PORTA
+;	BSF	STATUS,RP0
+;NoOverFlowTr:
 ;//
 
 	MOVF    TempForData,W   ;код
@@ -1266,12 +1294,12 @@ CaseCode8:
 
 
 CaseCode9:
-	BSF	PORTCProm,EnableRele
+;8/16	BSF	PORTCProm,EnableRele
 ;//	MOVF	PORTCProm,W
 ;//	MOVWF	PORTC
 	RETLW	0
 CaseCodeA:
-	BCF	PORTCProm,EnableRele
+;8/16	BCF	PORTCProm,EnableRele
 ;//	MOVF	PORTCProm,W
 ;//	MOVWF	PORTC
 	RETLW	0
@@ -1454,10 +1482,10 @@ Begin1:
 ;процедура начальной инициализации
 ;//InitGlobalProc:
 	BCF	STATUS,RP0
-	BCF	PORTCProm,EnableRele
-	BSF	PORTCProm,WRR
-	MOVF	PORTCProm,W
-	MOVWF	PORTC
+;8/16	BCF	PORTCProm,EnableRele
+;8/16	BSF	PORTCProm,WRR
+;8/16	MOVF	PORTCProm,W
+;8/16	MOVWF	PORTC
 
 
 
@@ -1543,7 +1571,7 @@ Begin1:
 ;------------------------------------------------
 	BCF     STATUS,RP0      ;выбор первой страницы для обращения
 ;Загрузка делителей канала
-	MOVLW   1               ;200 Бод
+	MOVLW   4               ;50 Бод
 	MOVWF	CounDivTransmit
 	MOVWF	CounDivTransmit20
 	MOVWF   ConstDel0
