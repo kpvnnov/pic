@@ -1,0 +1,2808 @@
+16c71
+
+DEBUG   EQU     1 ;константа отладки в готовом коде 0
+;Всевозможные скорости приема/передачи
+;Вычисление делителя для частоты опроса на приеме
+;  Топроса/(Скорость*Размер выборки)
+;Вычисление делителя от частоты опроса на передаче
+;  Топроса/Скорость
+;                             Делитель            Делитель
+;                           для выборки от       частоты опроса   ПОГРЕШНОСТЬ
+;                           частоты опроса       на передаче
+;                           на приеме
+;   200  выборка 50 бит          1                   100           0.0
+;   100  выборка 50 бит          2                   200           0.0
+;    50  выборка 50 бит          4                   400           0.0
+; ОСНОВНОЙ ПЕРИОД ОПРОСА 100.0 mks /8 каналов
+; ОСНОВНАЯ ЧАСТОТА ОПРОСА 20.000 Гц
+;Вычисление величины делителя для основной частоты опроса
+;                       20МГц           16МГц           12МГц
+; Tosc/(4*Tопроса)      250             200             150
+;
+W       equ     0
+F       equ     1
+;Первая страница
+INDF    equ     00H
+TMR0    equ     01H
+PCL     equ     02H
+STATUS  equ     03H
+        ;биты статуса
+        IRP     equ     7
+        RP1     equ     6
+        RP0     equ     5
+        TO      equ     4
+        PD      equ     3
+	Z       equ     2
+	DC      equ     1
+        C       equ     0
+
+FSR     equ     04H
+PORTA   equ     05H
+PORTB   equ     06H
+PORTC   equ     07H
+	BeginStateC	EQU	01000000B
+;RC0	#WRTC21		- запись регистра второго банка передачи тока покоя
+;RC1	#WRR1		- запуск одновибратора импульса переключения реле
+;RC2    #RS
+;RC3	#SMX1		- включение мультиплексора D+ D-
+;RC4	SEL1	(MUX)	- выбор D+ или D- с помощью мультиплексора
+;RC5	#WRTC11		- запись регистра первого банка передачи тока покоя
+;RC6	TXD1		- передача последовательного порта
+;RC7	RXD1            - прием    последовательного порта
+	WRR		EQU	1
+	SMX		EQU     3	;//Danger Two-line regim
+	MUX		EQU	4	;//разряд управления мультиплексором
+	WRTC11		EQU	5
+	WRTC21		EQU	0
+	EnableRele	EQU	2
+;	DataTransmBit 	EQU 02H	;//бит передачи (мультип)
+;	StrobeTransm    EQU 01H ;//бит стробирования
+PORTD   equ     08H
+PORTE   equ     09H
+	BeginStateE	EQU	00000100B	;начальное состояние порта E
+	DAC_CSS		EQU	2
+	DAC_CLC		EQU	1
+	DAC_DATA	EQU	0
+PCLATH  equ     0AH
+INTCON  equ     0BH
+        ;биты управляющего регистра прерываний
+	GIE     equ     7
+	PEIE    equ     6
+        T0IE    equ     5
+        INTE    equ     4
+        RBIE    equ     3
+        T0IF    equ     2
+        INTF    equ     1
+	RBIF    equ     0
+PIR1    equ     0CH
+	PSPIF   EQU     7
+        RCIF    EQU     5
+        TXIF    EQU     4
+        SSPIF   EQU     3
+        CCP1IF  EQU     2
+        TMR2IF  EQU     1
+        TMR1IF  EQU     0
+PIR2    equ     0DH
+TMR1L   equ     0EH
+TMR1H   equ     0FH
+T1CON   equ     10H
+	TMR1ON  EQU     0       ;запуск/остановка таймера1
+TMR2    equ     11H
+T2CON   equ     12H
+SSPBUF  equ     13H
+SSPCON  equ     14H
+CCPR1L  equ     15H
+CCPR1H  equ     16H
+CCP1CON equ     17H
+RCSTA   equ     18H
+	OERR	EQU	1	;ПЕРЕПОЛНЕНИЕ ПРИЕМНИКА
+	FERR	EQU	2	;//ошибка стопа
+	CREN	EQU	4	;1-разрешить прием
+	SREN	EQU	5	;single receive enable bit
+	RC89	EQU	6	;0-8 бит приема
+	SPEN	EQU	7	;1 -то выводы RC7/RX/DT и RC6/TX/CK как порт
+TXREG   equ     19H
+RCREG   equ     1AH
+CCPR2L  equ     1BH
+CCPR2H  equ     1CH
+CCP2CON equ     1DH
+;Второй банк
+OPTION  equ     01H
+	INTEDG  EQU 6 ;Interrupt edge select
+TRISA   equ     05H
+;значение для начальной инициализации порта A
+	InitPortA       EQU 11100011B	;// линии 2 и 3 на подтверждение приема
+
+TRISB   equ     06H
+;значение для начальной инициализации порта B
+	InitPortB       EQU 11111111B ;пока все на ввод
+TRISC   equ     07H
+;значение для начальной инициализации порта C
+	InitPortC       EQU 10000000B
+;RC0	#WRTC21		- запись регистра второго банка передачи тока покоя
+;RC1	#WRR1		- запуск одновибратора импульса переключения реле
+;RC2    not konect
+;RC3	#SMX1		- включение мультиплексора D+ D-
+;RC4	SEL1	(MUX)	- выбор D+ или D- с помощью мультиплексора
+;RC5	#WRTC11		- запись регистра первого банка передачи тока покоя
+;RC6	TXD1		- передача последовательного порта
+;RC7	RXD1            - прием    последовательного порта
+
+TRISD   equ     08H
+	InitPortD	EQU 00000000B
+TRISE   equ     09H
+	IBF     EQU     7
+	OBF     EQU     6
+	IBOV    EQU     5
+	PSPMODE EQU     4
+	TRISE2  EQU     2
+	TRISE1  EQU     1
+	TRISE0  EQU     0
+	InitPortE	EQU 00000000B
+;//##############################################
+;ФОРМАТ ПЕРЕДАЧИ МЕЖДУ PIC И CPU
+;старшие четыре бита код передачи
+;младшие четыре бита данные
+;коды передачи/приема
+;данные поступающие из CPU(ЦП)
+;0 - установка скорости передачи/приема (номер канала) //данные по  (2XH)
+;//пока не будет ;1 - установка количества битов приема (номер канала)  //данные по  (2XH)
+;2 - послать данные (младшая половина)
+;3 - послать данные (старшая половина)
+;4 - данные передачи для канала (номер канала) //данные по 2X-3X
+;5 - набор номера канала //данные по 2X
+;6 - Установить в ноль передатчик соответствующего канала
+;7 - Установить в единицу передатчик соответствующего канала
+;//данную команду выполнять последовательно с командой запуска цапа
+;//так как используют одинаковые ячейки
+;8 - загрузить байт для релюшек //данные по 2Х старшая половинка в этом коде
+;9 - включить разрешение реле
+;A - выключить разрешение реле
+;B - загнать в ЦАП данные //данные по 2Х-3Х нормальные в этой команде инвертированные
+   ; перекинуть три младших бита наоборот (0-ой бит MSB, 2-ой бит LSB)
+;C -
+;D -
+;E -
+;F - команда сброса
+;команда выполняется после приема старшей половины
+;------------------------------------------------
+;данные посылаемы в CPU(ЦП)
+;0 - принятые данные (номер канала)		//данные после этого кода
+;1 - ошибка принятия кода с линии (номер канала)//данные пришли до этого
+;2 - состояние D+ и D- для восьми каналов	//плюс еще два байта
+;3 - байт идентификации (я здесь и сохранение синхронизации)
+;4 - состояние очереди		//плюс байт состояния
+;5 - запрос на передачу (канал пуст на передачу)
+;6 - номер соответствующего канала набран
+;7 - error two-line regin //plus one byte about error
+;8 -
+;9 -
+;A -
+;B -
+;C -
+;D -
+;E -
+;F - коды ошибок
+;//переполнение процессор не успел считать данные
+ErrorOverflow	EQU	0F0H
+;//пришел неверный код с ЦПУ
+ErrorCode	EQU	0F1H
+ErrorOver	EQU	0F2H
+;//##############################################
+PIE1    equ     0CH
+	TMR1IE  EQU     0       ;разрешение прерываний от TMR1
+	TXIE	EQU	4	;разрешение прерываний от посл. передачи
+PIE2    equ     0DH
+PCON    equ     0EH
+	POR     EQU 1
+PR2     equ     12H
+SSPADD  equ     13H
+SSPSTAT equ     14H
+TXSTA   equ     18H
+        BRGH	EQU	2	;Low/High
+        SYNC	EQU	4	;0-асинхронный
+	TXEN	EQU	5	;разрешение посл. передачи
+	TX89	EQU	6	;0- 8бит
+	TXD8	EQU	0	;9 бит
+	CSRC	EQU	7	;синхронный режим
+
+SPBRG   equ     19H
+;переменные
+W_TEMP  equ     20H     ;ячейка для сохранения W при обработке прерывания
+			;определен в стр.0 и стр.1 !!!!!!!!!!
+
+Line0   EQU     3
+Line1   EQU     2
+Line2   EQU     1
+Line3   EQU     0
+Line4   EQU     7
+Line5   EQU     6
+Line6   EQU     5
+Line7   EQU     4
+
+LineMask0	EQU	00001000B
+LineMask1	EQU	00000100B
+LineMask2	EQU	00000010B
+LineMask3	EQU	00000001B
+LineMask4	EQU	10000000B
+LineMask5	EQU	01000000B
+LineMask6	EQU	00100000B
+LineMask7	EQU	00010000B
+
+PolovinaPerioda         EQU     25   ;Кoнстанта половины периода
+GoingOnPosilka          EQU     50   ;константа счетчика выхода на посылку
+DATA
+ORG 21H
+
+StateKanal      db 1    ;промежуточная ячейка для хранения
+
+FalseEnter      db 1
+		;0 бит - не рентерабельный вход в прерывание
+	PuskRele	EQU	1 ;если единица, при цикле записи запустить реле
+	OkTransmit 	EQU 	2 ;можно передавать дальше
+	BadTransmit 	EQU 	3 ;передать предыдущий
+	DACEnableAdr	EQU	4 ;разбираемся с адресом
+	ErrorTwoLine	EQU	5 ;ecli bit ustanovlen- oshibka two-line regim
+	BeginDACing	EQU	6 ;начать записывать в ЦАП
+	ErrorTwoOut	EQU	7 ;надо вывести если есть аварию двух пров
+StatePortA	db 1	;предыдущее состояние порта A //передавать след или предыдущий
+CountParitet	db 1
+FromCPU		db 1	;ячейка для анализа очереди приема
+ReadInterrupt   db 1    ;переменная для мултиплексного считывания датчика плюса
+;//ReadInterruptM  db 1    ;переменная для мултиплексного считывания датчика минуса
+;//WriteInterrupt  db 1    ;переменная для мултиплексной записи
+PORTAProm       db 1    ;переменная хранящая порт А
+PORTCProm       db 1    ;переменная  хранящая порт C
+PORTEProm	db 1
+;//CounterPortA    db 1    ;счетчик до  8
+ConstTransmit   EQU     25      ;через 2.5 ms=25* 100 mks
+CounterTransmit db 1    ;счетчик для передачи
+
+ConstDiv	EQU	80	;через 80*2.5= 200 ms
+CounDivTransmit db 1	;счетчик деления передачи еще дополнительно вывод данных об очереди
+ConstDiv20	EQU	8	;через 8*2.5= 20 ms
+CounDivTransmit20 db 1	;счетчик деления передачи еще дополнительно
+IamNow		EQU	255	;через 255*2.5=637.5 ms
+
+DelayOne	EQU	16	; единица в наборе номера 16*2.5=40 ms
+DelayNull	EQU	24	; ноль в наборе номера 24*2.5=60 ms
+
+KolvoDanyh     EQU     4
+;Cтруктура  блока данных для канала
+;0-Счетчик единиц в выборке
+;1-Счетчик выхода на посылку
+;2-Указатель на функцию (управлюющий байт)
+;3-Принимаемые данные канала
+
+;
+;
+PositionByte    EQU     2       ;указатель на ук.(управлюющий байт)
+PositionData    EQU     3       ;указатель на  принимаемые данные
+
+
+ConstDel0       db 1    ;постоянная для  загрузки делителя  канала 0
+Delitel0        db 1    ;счетчик для канала 0
+Params0         db KolvoDanyh
+;--
+ConstDel1       db 1    ;постоянная для  загрузки делителя  канала 1
+Delitel1        db 1    ;счетчик для канала 1
+Params1         db KolvoDanyh
+;--
+ConstDel2       db 1    ;постоянная для  загрузки делителя  канала 2
+Delitel2        db 1    ;счетчик для канала 2
+Params2         db KolvoDanyh
+;--
+ConstDel3       db 1    ;постоянная для  загрузки делителя  канала 3
+Delitel3        db 1    ;счетчик для канала 3
+Params3         db KolvoDanyh
+;--
+ConstDel4       db 1    ;постоянная для  загрузки делителя  канала 4
+Delitel4        db 1    ;счетчик для канала 4
+Params4         db KolvoDanyh
+;--
+ConstDel5       db 1    ;постоянная для  загрузки делителя  канала 5
+Delitel5        db 1    ;счетчик для канала 5
+Params5         db KolvoDanyh
+;--
+ConstDel6       db 1    ;постоянная для  загрузки делителя  канала 6
+Delitel6        db 1    ;счетчик для канала 6
+Params6         db KolvoDanyh
+;--
+ConstDel7       db 1    ;постоянная для  загрузки делителя  канала 7
+Delitel7        db 1    ;счетчик для канала 7
+Params7         db KolvoDanyh
+
+;в процедуре обработки приема
+;в эту ячеку пишутся данные приема
+DataToCPU	db 1	;сохранение данных с канала для передачи в ЦПУ
+WhatHappy	db 1	;что случилось? данные пришли или ошибка
+LowData		db 1	;данные пришедшие по коду 2X
+;---------------------------------------------
+TrStateKanal    db 1    ;ячейка для процедуры записи (передачи)
+TrDelitel0      db 1    ;счетчик для канала 0  (передачи)
+TrDelitel1      db 1    ;счетчик для канала 1  (передачи)
+TrDelitel2      db 1    ;счетчик для канала 2  (передачи)
+TrDelitel3      db 1    ;счетчик для канала 3  (передачи)
+TrDelitel4      db 1    ;счетчик для канала 4  (передачи)
+TrDelitel5      db 1    ;счетчик для канала 5  (передачи)
+TrDelitel6      db 1    ;счетчик для канала 6  (передачи)
+TrDelitel7      db 1    ;счетчик для канала 7  (передачи)
+CountData0      db 1    ;счетчик битов канала 0 передачи
+CountData1      db 1    ;счетчик битов канала 1 передачи
+CountData2      db 1    ;счетчик битов канала 2 передачи
+CountData3      db 1    ;счетчик битов канала 3 передачи
+CountData4      db 1    ;счетчик битов канала 4 передачи
+CountData5      db 1    ;счетчик битов канала 5 передачи
+CountData6      db 1    ;счетчик битов канала 6 передачи
+CountData7      db 1    ;счетчик битов канала 7 передачи
+TrData0         db 1    ;данные для передачи канала 0
+TrData1         db 1    ;данные для передачи канала 1
+TrData2         db 1    ;данные для передачи канала 2
+TrData3         db 1    ;данные для передачи канала 3
+TrData4         db 1    ;данные для передачи канала 4
+TrData5         db 1    ;данные для передачи канала 5
+TrData6         db 1    ;данные для передачи канала 6
+TrData7         db 1    ;данные для передачи канала 7
+ItIsStart       db 1    ;битовые  установки для передачи старта
+ItIsStop        db 1    ;битовые установки для передачи старта
+ItIsTransmit    db 1    ;есть ли данные для передачи
+NextData	db 1	;битовые утановки для загрузки следующего байта
+			;на передачу в канал
+NumberBegin	db 1	;битовые установки набора номера
+TokPokoya	db 1	;токи покоя
+DataRele	db 1	;данные для реле или ЦАПа
+;-----------------------------------------------
+;//------------------------------------------------
+;ячейки очередей в банке 1
+;________________________________________________
+ORG 21H
+QueueFull	db 1	;битовые установки однобайтовой очереди
+			;1-байт в ячейке есть
+TempForData     db 1    ;пром. ячейка для процедуры
+STATUS_TEMP     db 1    ;ячейка для сохранения status страница 0
+;//пока не используется
+;PCLATH_TEMP     db 1    ;ячека для сохранения PCLATH страница 0
+FSR_TEMP        db 1    ;ячека для сохранения FSR страница 0
+AdresOfDAC	db 1	;используется три бита для адреса ЦАПА
+			;данные для ЦАПА хранятся в DataRele
+CounterDAC	db 1	;счетчик битов для посылки в ЦАП
+
+
+;-----------------------------------------------
+;очередь на прием состояний с линии
+LineReceve      equ 0B0H
+;длина очереди до 0B7H включительно
+LHeadReceve     equ 2CH ;голова очереди прием (0ACH)
+LHvostReceve    equ 2DH ;хвост очереди  прием  (0ADH)
+;________________________________________________
+;очередь на передачу данных в ЦПУ
+OcherdTransmit  equ 0C0H
+;длина очереди до 0DFH включительно
+HeadTransmit    equ 2AH ;голова очереди передачи (0AAH)
+HvostTransmit   equ 2BH ;хвост очереди  передачи (0ABH)
+;________________________________________________
+;очередь на прием данных из ЦПУ
+OcherdReceve  equ 0E0H
+;длина очереди до 0EFH включительно
+HeadReceve    equ 2EH ;голова очереди приема (0AEH)
+HvostReceve   equ 2FH ;хвост очереди  приема (0AFH)
+;------------------------------------------------
+;очередь на передачу данных в линию
+LineTransmit  equ 0B8H
+;длина очереди до 0BFH включительно
+HeadLineTransmit    equ 28H ;голова очереди передачи (0A8H)
+HvostLineTransmit   equ 29H ;хвост очереди  передачи (0A9H)
+LengthLineTransmit  equ 27H ;длина очереди
+;//    0123456789ABCDEF
+;// A0:SS00000PPPTTRRCC 20      S - зарезервировано
+;// B0:RRRRRRRRPPPPPPPP 30      R - ячейки очереди приема с линии
+;// C0:TTTTTTTTTTTTTTTT 40      T - ячейки очереди передачи в ЦПУ
+;// D0:TTTTTTTTTTTTTTTT 50      С - ячейки очереди приема из ЦПУ
+;// E0:CCCCCCCCCCCCCCCC 60      P - Передача данных в линию
+;// F0:QQQQQQQQSSSSSSS0 70      Q - очередь передачи (однобайтовая)
+;//
+;//
+
+code
+
+ORG 0000h
+start:
+	CLRF    STATUS          ;Выбор страницы данных 0 (00H-7FH),и обнуление неисп.бит
+	CLRF    PCLATH          ;Выбор страницы программы 0(000-7FFH) для перехода
+	GOTO    Begin
+ORG 0004h
+InteruptService:
+;------------------------------------------------
+;Сохранение статуса и регистра W в ячейках
+	MOVWF   W_TEMP          ;сохранение W в TEMP ячейку в банке 0 или 1
+	SWAPF   STATUS,W        ;Swap status to be saved into W
+	BSF     STATUS,RP0      ;Выбор банка 1
+	MOVWF   STATUS_TEMP     ;Save status to bank zero STATUS_TEMP ячейке
+;------------------------------------------------
+;21.03.96.  Пока не будем сохранять
+;сохранение PCLATH
+;       MOVF    PCLATH,W        ;PCLATH->W
+;       MOVWF   PCLATH_TEMP     ;W->PCLATH_TEMP
+;------------------------------------------------
+;сохранение FSR
+	MOVF    FSR,W           ;FSR->W
+	MOVWF   FSR_TEMP        ;W->FSR_TEMP
+	BCF     STATUS,RP0      ;Выбор банка 0
+;------------------------------------------------
+;       CLRF    PCLATH          ;обнуление PCLATH для команд GOTO
+;------------------------------------------------
+;проверка какое прерывание произошло
+;	BTFSC   PIR1,PSPIF      ;Проверка прер.parallel slave port
+;	GOTO    PortInterrupt
+
+	BTFSC   INTCON,T0IF     ;проверка прер.таймера,SKIP если не было(0)
+	GOTO    TimerInterrupt
+
+	BTFSC   PIR1,RCIF      ;Проверка прер.приема
+	GOTO    ReadSCI
+
+	BTFSC   PIR1,TXIF      ;Проверка прер. передачи
+	GOTO    PortInterrupt
+
+	GOTO	Sboy
+
+TimerInterrupt:
+	BCF     INTCON,T0IF     ;прерывание обработано сброс бита таймера 0
+	BTFSS   FalseEnter,0
+	GOTO    NotReEnter
+
+	DECFSZ   CounterTransmit,F
+	GOTO    WithOutWrite    ;Идем на алгоритм без записи
+
+;-------------------------------------------------------------
+;Алгоритм с записью (передачей) и считыванием датчика минуса
+WithWrite:
+;извлечение данных передачи из очереди
+	BTFSS	FalseEnter,PuskRele
+	GOTO	NeRele
+	MOVF	DataRele,W
+	MOVWF	PORTD
+	BCF	FalseEnter,PuskRele
+	BCF	PORTCProm,WRR
+	MOVF	PORTCProm,W
+	MOVWF	PORTC           ;//задний строб записи
+				;//данные на порту D должны быть не менее 2 mks
+				;//сейчас около 3.6mks
+
+
+NeRele:	MOVF	PORTB,W
+	MOVWF   ReadInterrupt
+
+	BSF     STATUS,RP0
+	INCF    LengthLineTransmit,F
+	MOVF    HvostLineTransmit,W
+	MOVWF   FSR
+	INCF    HvostLineTransmit,W
+	ANDLW   07H
+	IORLW   0B8H
+	MOVWF   HvostLineTransmit
+	BCF     STATUS,RP0      ;выбор НУЛЕВОЙ страницы для обращения
+	MOVF    INDF,W          ;данные с головы очереди ->W
+	ANDLW   0FH
+	MOVWF	CounterTransmit	;ЯЧЕЙКА ИСПОЛЬЗУЕТСЯ НЕ ПО ПРЯМОМУ НАЗНАЧЕНИЮ
+	SWAPF	TokPokoya,W
+	ANDLW	0F0H
+	IORWF	CounterTransmit,W
+	MOVWF	PORTD
+
+	BSF	PORTCProm,MUX	;переключение мультиплексора на D-
+	MOVF	PORTCProm,W
+	MOVWF	PORTC
+
+	BSF	PORTCProm,WRTC11;запись данных в первые четыре канала
+	MOVF	PORTCProm,W
+	MOVWF	PORTC
+
+	SWAPF   INDF,W          ;данные с головы очереди ->W
+	ANDLW   0FH
+	MOVWF	CounterTransmit	;ЯЧЕЙКА ИСПОЛЬЗУЕТСЯ НЕ ПО ПРЯМОМУ НАЗНАЧЕНИЮ
+
+	BCF	PORTCProm,WRTC11;задний фронт записи в первые четыре канала
+	MOVF	PORTCProm,W
+	MOVWF	PORTC
+
+	MOVF	TokPokoya,W
+	ANDLW	0F0H
+	IORWF	CounterTransmit,W
+	MOVWF	PORTD
+
+
+	BSF	PORTCProm,WRTC21;запись данных во вторые четыре канала
+	MOVF	PORTCProm,W
+	MOVWF	PORTC
+
+	MOVLW   ConstTransmit          ;перезагрузка константы
+	MOVWF   CounterTransmit
+
+	BCF	PORTCProm,WRTC21;задний фронт записи во вторые четыре канала
+	MOVF	PORTCProm,W
+	MOVWF	PORTC
+
+
+;---------------
+;//запись в очередь передачи в ЦПУ значение D+ и D-
+;//и вывод статуса о очереди
+
+	BCF	STATUS,RP0
+	DECFSZ	CounDivTransmit20,F
+	GOTO	NeBudem
+
+	MOVLW	20H		;код состояние D+ D-
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+
+	BCF	STATUS,RP0
+	MOVF	ReadInterrupt,W	;датчики +
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+
+	BCF	STATUS,RP0
+	MOVF	PORTB,W
+	MOVWF   CounDivTransmit20 ;ne po pramomu naznacheniyu
+	BSF	PORTCProm,SMX	;perekluchaem na komparatori two-line regim
+	MOVF	PORTCProm,W
+	MOVWF	PORTC
+
+	MOVF    CounDivTransmit20,W ;ne po prjamomu naznacheniu
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+
+	MOVF	079H,W
+	MOVWF	078H
+	BCF	STATUS,RP0
+	MOVF	PORTB,W		;sostojanie avarii
+	BSF	STATUS,RP0
+	MOVWF	079H
+	ANDWF	078H,W
+	BTFSC	STATUS,Z
+	GOTO	NoErrorTwo
+	IORWF	07AH,F
+	BCF	STATUS,RP0
+	BSF	FalseEnter,ErrorTwoLine
+NoErrorTwo:
+	BCF	STATUS,RP0
+	MOVLW	ConstDiv20
+	MOVWF 	CounDivTransmit20
+
+NeBudem:
+;//вывод состояния об очереди
+	BCF	STATUS,RP0
+	DECFSZ	CounDivTransmit,F
+	GOTO	WhatIam
+	MOVLW	ConstDiv
+	MOVWF 	CounDivTransmit
+
+	MOVLW	40H		;код состояния очереди
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	MOVF	QueueFull,W
+	CALL    PutWordTransmit
+	BCF	STATUS,RP0
+	BSF	FalseEnter,ErrorTwoOut
+	GOTO	VseChitali
+WhatIam:BSF	STATUS,RP0
+	DECFSZ	07EH,F
+	GOTO	VseChitali
+;//	MOVLW	IamNow
+;//	MOVWF	07EH
+	MOVLW	30H		;код синхронизации
+;//	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	GOTO	VseChitali
+;-----------------------------------------------------------
+;Алгоритм без записи (передачи)
+WithOutWrite:
+	MOVF	PORTB,W
+	MOVWF   ReadInterrupt
+VseChitali:
+	BCF	STATUS,RP0
+;RC0	#WRTC21		- запись регистра второго банка передачи тока покоя
+;RC1	#WRR1		- запуск одновибратора импульса переключения реле
+;RC2    not konect      - разрешение включение реле
+;RC3	#SMX1		- включение мультиплексора D+ D-
+;RC4	SEL1	(MUX)	- выбор D+ или D- с помощью мультиплексора
+;RC5	#WRTC11		- запись регистра первого банка передачи тока покоя
+;RC6	TXD1		- передача последовательного порта
+;RC7	RXD1            - прием    последовательного порта
+	BSF	PORTCProm,WRR
+	MOVLW	11000110B
+	ANDWF   PORTCProm,W
+	MOVWF	PORTCProm
+	MOVWF	PORTC
+
+;------------------------------------------------
+;считывание данных D+ и D- с порта B и заталкиване в очередь приема линии
+	BSF     STATUS,RP0      ;Выбор банка 1
+	MOVF    LHvostReceve,W  ;хвост очереди приема->W
+	MOVWF   FSR
+	INCF    LHvostReceve,W  ;добавляем данные в хвост
+	ANDLW   07H
+	IORLW   0B0H
+	MOVWF   LHvostReceve
+	BCF     STATUS,RP0      ;Выбор банка 0
+	MOVF    ReadInterrupt,W ;PORTB->W(из ячейки мультиплексирования)
+	MOVWF   INDF            ;записываем в очередь
+				;данных каналов в основной программе
+	BCF     STATUS,RP0      ;Выбор банка 0
+	BCF     FalseEnter,0    ;следующий раз в прерывание не заходить
+	GOTO    CrtTMR0B0	;банк 0 включен можно идти
+NotReEnter:
+	BCF     STATUS,RP0      ;Выбор банка 0
+	BSF     FalseEnter,0    ;Следующий раз зайдем
+
+
+;------------------------------------------------
+CorrectTMR0:
+	BCF     STATUS,RP0
+CrtTMR0B0:			;экономим 200ns сюда можно заходить с банком 0
+;НЕОБХОДИМО СКОРЕКТИРОВАТЬ TMR0
+; ФОРМУЛА (256- кол-во тактов делителя)+3
+;  9  ;   50     50      250    50 mks  0.000      9  ;
+	MOVLW   9
+	ADDWF   TMR0,F
+;Основной выход из прерывания с восстановлением регистров
+ExitInterrupt:
+	CLRWDT
+	BSF     STATUS,RP0 ;УСТАНОВЛЕНИЕ БАНКА 1,вставить данную команду если
+			   ;в процедуре прерывания банк сменился на N1
+;------------------------------------------------
+;восстановление FSR
+	MOVF    FSR_TEMP,W      ;FSR_TEMP->W
+	MOVWF   FSR             ;W->FSR
+;------------------------------------------------
+;21.03.96.  Пока не будем востанавливать
+;восстановление PCLATH
+;       MOVF    PCLATH_TEMP,W   ;PCLATH_TEMP->W
+;       MOVWF   PCLATH          ;W->PCLATH
+;------------------------------------------------
+;Восстановление регистра статуса и W регистра
+	SWAPF   STATUS_TEMP,W ;Swap Status_temp ячеки в регитр W
+			;т.е.восстановление оригинального состояния банков
+	MOVWF   STATUS  ;Move W into Status
+	SWAPF   W_TEMP,F
+	SWAPF   W_TEMP,W ;восстановление регистра W с помощью двух SWAPF
+			;SWAPF не оказывает влияния на флаги
+	RETFIE
+;------------------------------------------------
+;
+;      ПРОЦЕДУРЫ
+;
+;------------------------------------------------
+;заталкивание W в очередь передачи в ЦП
+;ПЕРЕД ВЫЗОВОМ УСТАНОВИТЬ БАНК 1
+PutWordTransmit:
+	BCF     INTCON,GIE
+	BTFSC   INTCON,GIE
+	GOTO    PutWordTransmit
+	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	MOVWF   TempForData
+	MOVF    HvostTransmit,W ;хвост очереди передачи->W
+	MOVWF   FSR
+	INCF    HvostTransmit,W ;добавляем данные в хвост
+	ANDLW   01FH
+	IORLW   0C0H
+	MOVWF   HvostTransmit
+;//отладочный код
+
+	SUBWF   HeadTransmit,W
+	BTFSS	STATUS,Z
+	GOTO	NoOverFlowTr
+;//--
+	BCF	STATUS,RP0
+	MOVF	PORTAProm,W
+	XORLW	00010000B
+	MOVWF	PORTAProm
+	MOVWF	PORTA
+	BSF	STATUS,RP0
+NoOverFlowTr:
+;//
+
+	MOVF    TempForData,W   ;код
+	MOVWF   INDF            ;записываем в очередь
+	RETLW   0
+;//-
+;------------------------------------------------
+MainWork:
+	ADDWF   PCL,F
+	GOTO    HookOne
+	GOTO    HookZero
+	GOTO    HookSecondZero
+	GOTO    HookStart
+	GOTO    ReadData
+	GOTO    HookStop
+;//==============================================
+CaseCodeCPU:
+	ADDWF   PCL
+	GOTO    CaseCode0
+	GOTO    CaseCode1
+	GOTO    CaseCode2       ;младшая половина данных
+	GOTO    CaseCode3       ;старшая половина данные на передачу
+	GOTO    CaseCode4
+	GOTO    CaseCode5
+	GOTO    CaseCode6
+	GOTO    CaseCode7
+	GOTO    CaseCode8
+	GOTO    CaseCode9
+	GOTO    CaseCodeA
+	GOTO    CaseCodeB
+	GOTO    CaseCodeC
+	GOTO    CaseCodeD
+	GOTO    CaseCodeE
+	GOTO    CaseCodeF
+;//декодирование кода установки скорости
+;//для соответствующего канала
+SetSpeedKanal:
+	ADDWF   PCL
+	GOTO	SetSpeed0
+	GOTO	SetSpeed1
+	GOTO	SetSpeed2
+	GOTO	SetSpeed3
+	GOTO	SetSpeed4
+	GOTO	SetSpeed5
+	GOTO	SetSpeed6
+	GOTO	SetSpeed7
+SetTransmKanal:
+	ADDWF   PCL
+	GOTO	SetTransmKanal0
+	GOTO	SetTransmKanal1
+	GOTO	SetTransmKanal2
+	GOTO	SetTransmKanal3
+	GOTO	SetTransmKanal4
+	GOTO	SetTransmKanal5
+	GOTO	SetTransmKanal6
+	GOTO	SetTransmKanal7
+SetNumberKanal:
+	ADDWF   PCL
+	GOTO	SetNumberKanal0
+	GOTO	SetNumberKanal1
+	GOTO	SetNumberKanal2
+	GOTO	SetNumberKanal3
+	GOTO	SetNumberKanal4
+	GOTO	SetNumberKanal5
+	GOTO	SetNumberKanal6
+	GOTO	SetNumberKanal7
+SetNullKanal:
+	ADDWF   PCL
+	GOTO	SetNullKanal0
+	GOTO	SetNullKanal1
+	GOTO	SetNullKanal2
+	GOTO	SetNullKanal3
+	GOTO	SetNullKanal4
+	GOTO	SetNullKanal5
+	GOTO	SetNullKanal6
+	GOTO	SetNullKanal7
+SetOneKanal:
+	ADDWF   PCL
+	GOTO	SetOneKanal0
+	GOTO	SetOneKanal1
+	GOTO	SetOneKanal2
+	GOTO	SetOneKanal3
+	GOTO	SetOneKanal4
+	GOTO	SetOneKanal5
+	GOTO	SetOneKanal6
+	GOTO	SetOneKanal7
+;+=+=+=+=+=+=+=+=+=+
+;Процедуры не должны выходить за этот адрес!!!!!!
+;================================================
+ORG 100H
+
+;какой-то сбой,необходимо что-то заново проинициализировать
+Sboy:   MOVLW   01100000B       ;Разрешение прерываний вообще
+	MOVWF   INTCON		;устанавливаем прерывания которые разрешены
+	BSF	STATUS,RP0
+	MOVLW	00100000B
+	MOVWF	PIE1		;разрешаем прерывания приема
+	CLRF	PIE2		;лишние прерывания запрещаем
+;ПОКА ВСЕ
+	GOTO ExitInterrupt
+
+
+;//==============================================
+HookOne:
+	BTFSS   StateKanal,0    ;Проверка бита приема
+	RETLW   0
+	INCF    FSR,F
+	INCF    FSR,F
+	INCF    INDF,F
+	RETLW   0
+;//==============================================
+HookZero:
+	BTFSC   StateKanal,0    ;Проверка  бита приема
+	RETLW   0
+	INCF    FSR,F
+	INCF    FSR,F
+	INCF    INDF,F
+	RETLW   0
+
+;//==============================================
+HookSecondZero:
+	CLRF    INDF
+	INCF    FSR,F
+	MOVLW   (GoingOnPosilka-2)  ;счетчик выхода на посылку
+	MOVWF   INDF
+	INCF    FSR,F
+	DECF    INDF,F
+	BTFSC   StateKanal,0    ;Проверка бита приема
+	RETLW   0
+	INCF    INDF,F
+	INCF    INDF,F
+	RETLW   0
+;//==============================================
+HookStart:
+	BTFSC   StateKanal,0
+	INCF    INDF,F
+	INCF    FSR,F
+	DECFSZ  INDF,F
+	RETLW   0
+	DECF    FSR,F
+	MOVLW   PolovinaPerioda ;Кoнстанта половины периода
+	SUBWF   INDF,W
+	BTFSC   STATUS,C
+	GOTO    NotStart
+	CLRF    INDF
+	INCF    FSR,F
+	MOVLW   GoingOnPosilka  ;константа счетчика выхода на посылку
+	MOVWF   INDF
+	INCF    FSR,F
+	INCF    INDF,F          ;управляющий байт
+	INCF    FSR,F
+	MOVLW	0F0H		;11110000B для приема 5 бит
+	MOVWF   INDF
+	RETLW	0
+;//==============================================
+NotStart:
+	INCF    FSR,F
+	INCF    FSR,F
+	CLRF    INDF
+	INCF    INDF,F
+	RETLW   0
+;//==============================================
+ReadData:
+	BTFSC   StateKanal,0
+	INCF    INDF,F
+	INCF    FSR,F
+	DECFSZ  INDF,F
+	RETLW   0
+	DECF    FSR,F
+	MOVLW   PolovinaPerioda ;Кoнстанта половины периода
+	SUBWF   INDF,W
+	INCF	FSR,F
+	INCF	FSR,F
+	INCF	FSR,F
+	RRF	INDF,F
+	BTFSC	STATUS,C
+	GOTO	LastPosilka
+	DECF	FSR,F
+	DECF	FSR,F
+	MOVLW	GoingOnPosilka  ;константа счетчика выхода на посылку
+	MOVWF   INDF
+	DECF	FSR,F
+	CLRF	INDF
+	RETLW	0
+LastPosilka:
+	RRF	INDF,F
+	RRF	INDF,F
+	RRF	INDF,F
+	MOVLW	00011111B
+	ANDWF	INDF,W
+	MOVWF	DataToCPU
+	DECF	FSR,F
+	INCF	INDF,F
+	DECF	FSR,F
+	MOVLW	GoingOnPosilka  ;константа счетчика выхода на посылку
+	MOVWF   INDF
+	DECF	FSR,F
+	CLRF	INDF
+
+	MOVF	WhatHappy,W	;пришли данные с канала WhatHappy-номер канала
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+;//данную строчку ставить нельзя т.к. в прерывании данные тоже выводятся
+;//	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+
+	MOVF	DataToCPU,W     ;сами данные с канала 0
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+	RETLW	1
+;//==============================================
+HookStop:
+	BTFSC   StateKanal,0
+	INCF    INDF,F
+	INCF    FSR,F
+	DECFSZ  INDF,F
+	RETLW   0
+	DECF    FSR,F
+	MOVLW   PolovinaPerioda ;Кoнстанта половины периода
+	SUBWF   INDF,W
+	BTFSS   STATUS,C
+	GOTO    NotStop
+	INCF    FSR,F
+	INCF    FSR,F
+	MOVLW	1
+	MOVWF	INDF
+	RETLW   0
+NotStop:
+	INCF    FSR,F
+	INCF    FSR,F
+	CLRF	INDF
+	MOVF	WhatHappy,W	;пришли данные с канала с ошибкой WhatHappy-номер канала
+	IORLW	10H		;пришли данные с канала 0 с ошибкой
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+
+	RETLW   2
+;//установка скорости по коду с процессора
+SetSpeed0:
+	MOVF	LowData,W
+	MOVWF	ConstDel0
+	RETLW	0
+SetSpeed1:
+	MOVF	LowData,W
+	MOVWF	ConstDel1
+	RETLW	0
+SetSpeed2:
+	MOVF	LowData,W
+	MOVWF	ConstDel2
+	RETLW	0
+SetSpeed3:
+	MOVF	LowData,W
+	MOVWF	ConstDel3
+	RETLW	0
+SetSpeed4:
+	MOVF	LowData,W
+	MOVWF	ConstDel4
+	RETLW	0
+SetSpeed5:
+	MOVF	LowData,W
+	MOVWF	ConstDel5
+	RETLW	0
+SetSpeed6:
+	MOVF	LowData,W
+	MOVWF	ConstDel6
+	RETLW	0
+SetSpeed7:
+	MOVF	LowData,W
+	MOVWF	ConstDel7
+	RETLW	0
+;//Анализ кодов пришедших с ЦПУ
+CaseCode0:
+	MOVF	FromCPU,W
+	ANDLW	07H
+	GOTO	SetSpeedKanal
+CaseCode1:
+;//младший полубайт данных
+CaseCode2:
+	MOVF    FromCPU,W
+	ANDLW   0FH
+	MOVWF   LowData         ;записываем в ячейку LowData
+	RETLW   0
+
+;//старший полубайт данных
+CaseCode3:
+	SWAPF	FromCPU,W
+	ANDLW   0F0H
+	IORWF   LowData,F         ;записываем в ячейку LowData
+	RETLW   0
+
+;//загрузка данных в канал
+;//загрузка идет в очередь
+;//а программа автоматически ее загрузит на передачу
+CaseCode4:
+	MOVF	FromCPU,W
+	ANDLW	07H
+	GOTO	SetTransmKanal
+SetTransmKanal0:
+	MOVF	LowData,W
+	BSF	STATUS,RP0
+	MOVWF	70H
+;/*
+;IF DEBUG
+;	BTFSS   QueueFull,0
+;	GOTO	Ok0
+;	MOVLW	ErrorOver	;моя твоя не понимай
+;	CALL    PutWordTransmit
+;	BSF     INTCON,GIE      ;востанавливаем прерывания
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+;Ok0:
+;ENDIF
+;*/
+	BSF	QueueFull,0	;данные в очередь
+	RETLW	0
+SetTransmKanal1:
+	MOVF	LowData,W
+	BSF	STATUS,RP0
+	MOVWF	71H
+;/*
+;IF DEBUG
+;	BTFSS   QueueFull,1
+;	GOTO	Ok1
+;	MOVLW	ErrorOver	;моя твоя не понимай
+;	CALL    PutWordTransmit
+;	BSF     INTCON,GIE      ;востанавливаем прерывания
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+;Ok1:
+;ENDIF
+;*/
+	BSF	QueueFull,1	;данные в очередь
+	RETLW	0
+SetTransmKanal2:
+	MOVF	LowData,W
+	BSF	STATUS,RP0
+	MOVWF	72H
+;/*
+;IF DEBUG
+;	BTFSS   QueueFull,2
+;	GOTO	Ok2
+;	MOVLW	ErrorOver	;моя твоя не понимай
+;	CALL    PutWordTransmit
+;	BSF     INTCON,GIE      ;востанавливаем прерывания
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+;Ok2:
+;ENDIF
+;*/
+	BSF	QueueFull,2	;данные в очередь
+	RETLW	0
+SetTransmKanal3:
+	MOVF	LowData,W
+	BSF	STATUS,RP0
+	MOVWF	73H
+;/*
+;IF DEBUG
+;	BTFSS   QueueFull,3
+;	GOTO	Ok3
+;	MOVLW	ErrorOver	;моя твоя не понимай
+;	CALL    PutWordTransmit
+;	BSF     INTCON,GIE      ;востанавливаем прерывания
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+;Ok3:
+;ENDIF
+;*/
+	BSF	QueueFull,3	;данные в очередь
+	RETLW	0
+SetTransmKanal4:
+	MOVF	LowData,W
+	BSF	STATUS,RP0
+	MOVWF	74H
+;/*
+;IF DEBUG
+;	BTFSS   QueueFull,4
+;	GOTO	Ok4
+;	MOVLW	ErrorOver	;моя твоя не понимай
+;	CALL    PutWordTransmit
+;	BSF     INTCON,GIE      ;востанавливаем прерывания
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+;Ok4:
+;ENDIF
+;*/
+	BSF	QueueFull,4	;данные в очередь
+	RETLW	0
+SetTransmKanal5:
+	MOVF	LowData,W
+	BSF	STATUS,RP0
+	MOVWF	75H
+;/*
+;IF DEBUG
+;	BTFSS   QueueFull,5
+;	GOTO	Ok5
+;	MOVLW	ErrorOver	;моя твоя не понимай
+;	CALL    PutWordTransmit
+;	BSF     INTCON,GIE      ;востанавливаем прерывания
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+;Ok5:
+;ENDIF
+;*/
+	BSF	QueueFull,5	;данные в очередь
+	RETLW	0
+SetTransmKanal6:
+	MOVF	LowData,W
+	BSF	STATUS,RP0
+	MOVWF	76H
+;/*
+;IF DEBUG
+;	BTFSS   QueueFull,6
+;	GOTO	Ok6
+;	MOVLW	ErrorOver	;моя твоя не понимай
+;	CALL    PutWordTransmit
+;	BSF     INTCON,GIE      ;востанавливаем прерывания
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+;Ok6:
+;ENDIF
+;*/
+	BSF	QueueFull,6	;данные в очередь
+	RETLW	0
+SetTransmKanal7:
+	MOVF	LowData,W
+	BSF	STATUS,RP0
+	MOVWF	77H
+;/*
+;IF DEBUG
+;	BTFSS   QueueFull,7
+;	GOTO	Ok7
+;	MOVLW	ErrorOver	;моя твоя не понимай
+;	CALL    PutWordTransmit
+;	BSF     INTCON,GIE      ;востанавливаем прерывания
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+;Ok7:
+;ENDIF
+;*/
+	BSF	QueueFull,7	;данные в очередь
+	RETLW	0
+
+CaseCode5:
+	MOVF	FromCPU,W
+	ANDLW	07H
+	GOTO	SetNumberKanal
+SetNumberKanal0:
+	MOVF	LowData,W
+	MOVWF	TrData0
+	BSF	NumberBegin,0
+	RETLW	0
+SetNumberKanal1:
+	MOVF	LowData,W
+	MOVWF	TrData1
+	BSF	NumberBegin,1
+	RETLW	0
+SetNumberKanal2:
+	MOVF	LowData,W
+	MOVWF	TrData2
+	BSF	NumberBegin,2
+	RETLW	0
+SetNumberKanal3:
+	MOVF	LowData,W
+	MOVWF	TrData3
+	BSF	NumberBegin,3
+	RETLW	0
+SetNumberKanal4:
+	MOVF	LowData,W
+	MOVWF	TrData4
+	BSF	NumberBegin,4
+	RETLW	0
+SetNumberKanal5:
+	MOVF	LowData,W
+	MOVWF	TrData5
+	BSF	NumberBegin,5
+	RETLW	0
+SetNumberKanal6:
+	MOVF	LowData,W
+	MOVWF	TrData6
+	BSF	NumberBegin,6
+	RETLW	0
+SetNumberKanal7:
+	MOVF	LowData,W
+	MOVWF	TrData7
+	BSF	NumberBegin,7
+	RETLW	0
+CaseCode6:
+	MOVF	FromCPU,W
+	ANDLW	07H
+	GOTO	SetNullKanal
+SetNullKanal0:
+	BSF	TrStateKanal,Line0
+	BSF	TokPokoya,Line0
+	RETLW	0
+SetNullKanal1:
+	BSF	TrStateKanal,Line1
+	BSF	TokPokoya,Line1
+	RETLW	0
+SetNullKanal2:
+	BSF	TrStateKanal,Line2
+	BSF	TokPokoya,Line2
+	RETLW	0
+SetNullKanal3:
+	BSF	TrStateKanal,Line3
+	BSF	TokPokoya,Line3
+	RETLW	0
+SetNullKanal4:
+	BSF	TrStateKanal,Line4
+	BSF	TokPokoya,Line4
+	RETLW	0
+SetNullKanal5:
+	BSF	TrStateKanal,Line5
+	BSF	TokPokoya,Line5
+	RETLW	0
+SetNullKanal6:
+	BSF	TrStateKanal,Line6
+	BSF	TokPokoya,Line6
+	RETLW	0
+SetNullKanal7:
+	BSF	TrStateKanal,Line7
+	BSF	TokPokoya,Line7
+	RETLW	0
+
+CaseCode7:
+	MOVF	FromCPU,W
+	ANDLW	07H
+	GOTO	SetOneKanal
+SetOneKanal0:
+	BCF	TrStateKanal,Line0
+	BCF	TokPokoya,Line0
+	RETLW	0
+SetOneKanal1:
+	BCF	TrStateKanal,Line1
+	BCF	TokPokoya,Line1
+	RETLW	0
+SetOneKanal2:
+	BCF	TrStateKanal,Line2
+	BCF	TokPokoya,Line2
+	RETLW	0
+SetOneKanal3:
+	BCF	TrStateKanal,Line3
+	BCF	TokPokoya,Line3
+	RETLW	0
+SetOneKanal4:
+	BCF	TrStateKanal,Line4
+	BCF	TokPokoya,Line4
+	RETLW	0
+SetOneKanal5:
+	BCF	TrStateKanal,Line5
+	BCF	TokPokoya,Line5
+	RETLW	0
+SetOneKanal6:
+	BCF	TrStateKanal,Line6
+	BCF	TokPokoya,Line6
+	RETLW	0
+SetOneKanal7:
+	BCF	TrStateKanal,Line7
+	BCF	TokPokoya,Line7
+	RETLW	0
+
+CaseCode8:
+	SWAPF	FromCPU,W
+	ANDLW   0F0H
+	IORWF   LowData,W
+	MOVWF	DataRele
+	BSF	FalseEnter,PuskRele
+	RETLW	0
+
+
+CaseCode9:
+	BSF	PORTCProm,EnableRele
+;//	MOVF	PORTCProm,W
+;//	MOVWF	PORTC
+	RETLW	0
+CaseCodeA:
+	BCF	PORTCProm,EnableRele
+;//	MOVF	PORTCProm,W
+;//	MOVWF	PORTC
+	RETLW	0
+
+CaseCodeB:
+	MOVF	LowData,W
+	MOVWF	DataRele
+	BSF	FalseEnter,BeginDACing
+	BSF	FalseEnter,DACEnableAdr ;//сначала передаем адрес
+	BCF	PORTEProm,DAC_CSS	;//разрешаем работу ЦАПА
+
+	MOVF	FromCPU,W
+	BSF	STATUS,RP0
+	MOVWF	AdresOfDAC
+	MOVLW	3		;//количество битов адреса для ЦАПа
+	MOVWF	CounterDAC
+	RETLW   0
+
+CaseCodeC:
+CaseCodeD:
+CaseCodeE:
+CaseCodeF:
+	MOVLW	ErrorCode	;моя твоя не понимай
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+
+	RETLW	0
+
+;________________________________________________
+;обработка прерывания с порта записи
+PortInterrupt:
+	BCF	STATUS,RP0
+
+;	MOVF	PORTEProm,W
+;	XORLW	00000100B
+;	MOVWF	PORTEProm
+;	MOVWF	PORTE
+
+	BTFSC	FalseEnter,BadTransmit	;//передавать предыдущий
+	GOTO	PrevisionTransmit
+	BCF	FalseEnter,OkTransmit	;//будем передавать следующий
+	BSF	STATUS,RP0
+	BCF     PIE1,TXIE       ;прерывание обработано сброс бита разрешения
+	MOVF    HeadTransmit,W  ;голова очереди передачи->W
+	MOVWF   FSR
+	INCF    HeadTransmit,W
+	ANDLW   01FH
+	IORLW   0C0H
+	MOVWF   HeadTransmit
+	BCF STATUS,RP0          ;выбор НУЛЕВОЙ страницы для обращения
+	SWAPF	INDF,W
+	XORWF	INDF,W
+	MOVWF	CountParitet
+	RRF	CountParitet,F
+	RRF	CountParitet,F
+	XORWF	CountParitet,W
+	MOVWF	CountParitet
+	RRF	CountParitet,F
+	XORWF	CountParitet,F
+	RRF	CountParitet,F
+	BSF	STATUS,RP0
+	BCF	TXSTA,TXD8
+	BTFSC	STATUS,C
+	BSF	TXSTA,TXD8
+	BCF	STATUS,RP0
+	MOVF    INDF,W          ;данные с головы очереди ->W
+	MOVWF	TXREG
+	GOTO    ExitInterrupt
+;---
+PrevisionTransmit:
+	BCF	FalseEnter,BadTransmit	;//передавать будем предыдущий
+	BSF	STATUS,RP0
+	BCF     PIE1,TXIE       ;прерывание обработано сброс бита разрешения
+	DECF    HeadTransmit,W
+	ANDLW   01FH
+	IORLW   0C0H
+	MOVWF   FSR
+	BCF STATUS,RP0          ;выбор НУЛЕВОЙ страницы для обращения
+	SWAPF	INDF,W
+	XORWF	INDF,W
+	MOVWF	CountParitet
+	RRF	CountParitet,F
+	RRF	CountParitet,F
+	XORWF	CountParitet,W
+	MOVWF	CountParitet
+	RRF	CountParitet,F
+	XORWF	CountParitet,F
+	RRF	CountParitet,F
+	BSF	STATUS,RP0
+	BCF	TXSTA,TXD8
+	BTFSC	STATUS,C
+	BSF	TXSTA,TXD8
+
+	BCF	STATUS,RP0
+	MOVF    INDF,W          ;данные с головы очереди ->W
+	MOVWF	TXREG
+	GOTO    ExitInterrupt
+
+;--------------------------------------------------
+ReadSCI:
+	BCF     STATUS,RP0
+
+;	MOVF	PORTEProm,W
+;	XORLW	00000010B
+;	MOVWF	PORTEProm
+;	MOVWF	PORTE
+
+	BTFSC	RCSTA,FERR	;ошибка стопа ?
+	GOTO	FramingError
+	BSF     STATUS,RP0
+	MOVF    HvostReceve,W   ;хвост очереди приема->W
+	MOVWF   FSR
+	INCF    HvostReceve,W   ;добавляем данные в хвост
+	ANDLW   0FH
+	IORLW   0E0H
+	MOVWF   HvostReceve
+	BCF     STATUS,RP0
+	MOVF    RCREG,W         ;считываем поступвшие данные
+	MOVWF   INDF            ;записываем в очередь
+
+	SWAPF	INDF,W		;//подсчитываем бит четности
+	XORWF	INDF,W
+	MOVWF	CountParitet
+	RRF	CountParitet,F
+	RRF	CountParitet,F
+	XORWF	CountParitet,W
+	MOVWF	CountParitet
+	RRF	CountParitet,F
+	XORWF	CountParitet,F
+	MOVF	RCSTA,W
+	XORWF 	CountParitet,F
+	BTFSC	CountParitet,0
+	GOTO	ParityError
+	MOVF	PORTAProm,W
+	XORLW	04H		;//принято нормально
+	MOVWF	PORTAProm
+	MOVWF	PORTA
+	GOTO    ExitInterrupt
+ParityError:
+	MOVF	PORTAProm,W
+	XORLW	08H		;//принято с ошибкой
+	MOVWF	PORTAProm
+	MOVWF	PORTA
+	BSF     STATUS,RP0
+	DECF    HvostReceve,W   ;убираем данные с хвоста
+	ANDLW   0FH
+	IORLW   0E0H
+	MOVWF   HvostReceve
+	GOTO    ExitInterrupt
+
+FramingError:
+	MOVF    RCREG,W         ;считываем поступвшие данные
+	MOVF	PORTAProm,W
+	XORLW	08H		;//принято с ошибкой
+	MOVWF	PORTAProm
+	MOVWF	PORTA
+	GOTO    ExitInterrupt
+
+;________________________________________________
+
+
+Begin:
+	BTFSC STATUS,PD         ;Проверка бита Power Down,Skip if Clear
+	GOTO PowerDownSet
+PowerDownClear:                 ;Вообще заход на данную точку,выход из режима SLEEP
+	CLRWDT
+	GOTO    Begin1  ;ОТЛАДОЧНАЯ КОМАНДА
+;	GOTO 000H               ;Поэтому сбрасываем этот бит и заново запускаемся
+WatchDogError:
+	CLRWDT          ;ОТЛАДОЧНАЯ КОМАНДА
+	GOTO    Begin1  ;ОТЛАДОЧНАЯ КОМАНДА
+PowerDownSet:
+	BTFSS STATUS,TO         ;Проверка бита Time-out,Skip if Set
+	GOTO WatchDogError      ;произошел сбой либо программная ошибка
+;Начало программы по инициализации при включении питания
+Begin1:
+;///CALL    InitGlobalProc
+;процедура начальной инициализации
+;//InitGlobalProc:
+	BCF	STATUS,RP0
+	BCF	PORTCProm,EnableRele
+	BSF	PORTCProm,WRR
+	MOVF	PORTCProm,W
+	MOVWF	PORTC
+
+
+
+
+
+	BSF     STATUS,RP0      ;выбор первой страницы для обращения
+	MOVLW   01001111B       ;выбор прескалера для WDT
+				;INT по переднему фронту
+	MOVWF   OPTION
+	MOVLW   InitPortE       ;Установка порта E
+	MOVWF   TRISE
+	MOVLW   00100000B       ;Разрешение прерываний от внешних устройств
+	MOVWF   PIE1
+	CLRF    PIE2
+	BCF	TXSTA,BRGH	;Low SPEED
+	MOVLW	7
+	MOVWF	SPBRG		;39063-делитель
+	BCF	TXSTA,SYNC	;асинхронный
+
+;//попытка вывести со сброса
+	BSF	TXSTA,CSRC
+
+	BCF	STATUS,RP0
+	BCF	RCSTA,CREN
+	BCF	RCSTA,SREN
+	BSF	RCSTA,SPEN	;конфигурирование выводов
+
+	BSF	STATUS,RP0
+	BSF	TXSTA,TX89	;9 бит передачи
+	BSF	PIE1,TXIE	;РАЗРЕШАЕМ ПРЕРЫВАНИЯ ПЕРЕДАЧИ
+	BSF	TXSTA,TXEN	;разрешаем передачу посл.порта
+	BSF     PCON,POR
+	MOVLW   InitPortA
+	MOVWF   TRISA
+	MOVLW   InitPortB
+	MOVWF   TRISB
+	MOVLW   InitPortC
+	MOVWF   TRISC
+	MOVLW   InitPortD
+	MOVWF   TRISD
+	BCF     STATUS,RP0      ;выбор нулевой страницы
+	CLRF    PIR1            ;обнуляем флаги внешних устройст(на всяк.сл.)
+	BSF	RCSTA,SPEN	;конфигурирование выводов
+	BSF	RCSTA,RC89	;9 бит приема
+	BSF	RCSTA,CREN	;разрешение приема
+	MOVLW	BeginStateC
+	MOVWF	PORTCProm
+	MOVWF	PORTC
+
+	MOVLW	BeginStateE
+	MOVWF	PORTEProm
+	MOVWF	PORTE
+
+;//	RETLW   0
+
+;------------------------------------------------
+;Инициализация очередей
+	BSF     STATUS,RP0      ;выбор первой страницы для обращения
+;------------------------------------------------
+	CLRF	QueueFull	;//очистка очереди передачи в линию
+;------------------------------------------------
+;очередь на передачу в шину(наружу)
+	MOVLW   OcherdTransmit
+	MOVWF   HeadTransmit
+	MOVWF   HvostTransmit
+;------------------------------------------------
+;очередь на прием (внутрь)
+	MOVLW   OcherdReceve
+	MOVWF   HeadReceve
+	MOVWF   HvostReceve
+;------------------------------------------------
+;очередь на передачу в линию
+	MOVLW   LineTransmit
+	MOVWF   HeadLineTransmit
+	MOVWF   HvostLineTransmit
+	MOVLW   8
+	MOVWF   LengthLineTransmit
+;------------------------------------------------
+;очередь на прием с линии
+	MOVLW   LineReceve
+	MOVWF   LHeadReceve
+	MOVWF   LHvostReceve
+;------------------------------------------------
+	BCF     STATUS,RP0      ;выбор первой страницы для обращения
+;Загрузка делителей канала
+	MOVLW   1               ;200 Бод
+	MOVWF	CounDivTransmit
+	MOVWF	CounDivTransmit20
+	MOVWF   ConstDel0
+	MOVWF   ConstDel1
+	MOVWF   ConstDel2
+	MOVWF   ConstDel3
+	MOVWF   ConstDel4
+	MOVWF   ConstDel5
+	MOVWF   ConstDel6
+	MOVWF   ConstDel7
+
+	CLRF    (PositionByte+Params0)   ;Очистка указателей на функцию
+	CLRF    (PositionByte+Params1)
+	CLRF    (PositionByte+Params2)
+	CLRF    (PositionByte+Params3)
+	CLRF    (PositionByte+Params4)
+	CLRF    (PositionByte+Params5)
+	CLRF    (PositionByte+Params6)
+	CLRF    (PositionByte+Params7)
+
+	MOVLW   0FFH
+	MOVWF	TrStateKanal	;//отбой всех каналов
+	MOVWF	TokPokoya	;//включение везде тока покоя
+	;//
+
+;загрузка порта A
+;	MOVLW   07H
+;	MOVWF   PORTAProm
+;	MOVWF   PORTA
+
+	MOVLW   ConstTransmit           ;загрузка константы передачи
+	MOVWF   CounterTransmit
+	CLRF    ItIsTransmit            ;данных для передачи нет
+	CLRF	NumberBegin		;набора номера нет
+	CLRF	NextData		;загружать нечего
+	CLRF	FalseEnter
+
+;       CALL    LoadAllConstRecTransm
+
+
+
+
+IF DEBUG
+
+	MOVF    ConstDel0,W
+	MOVWF   Delitel0
+	MOVF    ConstDel1,W
+	MOVWF   Delitel1
+	MOVF    ConstDel2,W
+	MOVWF   Delitel2
+	MOVF    ConstDel3,W
+	MOVWF   Delitel3
+	MOVF    ConstDel4,W
+	MOVWF   Delitel4
+	MOVF    ConstDel5,W
+	MOVWF   Delitel5
+	MOVF    ConstDel6,W
+	MOVWF   Delitel6
+	MOVF    ConstDel7,W
+	MOVWF   Delitel7
+	MOVLW   1
+	MOVWF   TrDelitel0      ;канал 0
+	MOVWF   TrDelitel1      ;канал 1
+	MOVWF   TrDelitel2      ;канал 2
+	MOVWF   TrDelitel3      ;канал 3
+	MOVWF   TrDelitel4      ;канал 4
+	MOVWF   TrDelitel5      ;канал 5
+	MOVWF   TrDelitel6      ;канал 6
+	MOVWF   TrDelitel7      ;канал 7
+ENDIF
+
+	MOVLW   11100000B       ;Разрешение прерываний вообще
+				;Разрешение прерывания от перефирийных устройств
+				;Разрешение прерывания от TMR0
+;///такойже кусок в ошибке прерывания
+	MOVWF   INTCON
+	CLRWDT
+;//________________________________________________
+;Главный цикл основной программы
+;Проверяет биты установленных прерываний и обрабатывает их
+;------------------------------------------------
+IdleCikl:
+
+	BSF STATUS,RP0          ;выбор первой страницы для обращения
+	MOVF    LHeadReceve,W   ;голова очереди приема->W
+	MOVWF   FSR
+	SUBWF   LHvostReceve,W ;(LHvostReceve-LHeadtReceve)==0
+	BTFSC   STATUS,Z        ;в очереди что-нибудь есть?
+	GOTO    EndOfJob        ;увы ничего нет
+	INCF    LHeadReceve,W
+	ANDLW   07H
+	IORLW   0B0H
+	MOVWF   LHeadReceve
+	BCF     STATUS,RP0      ;выбор НУЛЕВОЙ страницы для обращения
+	MOVF    INDF,W          ;данные с головы очереди ->W
+	MOVWF   StateKanal      ;заносим значение в промежуточную ячейку
+	CLRF	WhatHappy
+;//Обработка значения каналов
+;---------------------------------------------
+;//основной цикл
+;обработка канала 0
+	DECFSZ  Delitel0        ;входной счетчик
+	GOTO    NextKanal1
+	MOVLW   Params0         ;указатель на структуру
+	MOVWF   FSR
+	MOVF    ConstDel0,W     ;константа канала,W
+	MOVWF   Delitel0        ;входной счетчик
+	MOVF    (PositionByte+Params0),W;управляющий байт,W
+	CALL    MainWork
+
+;--------------------------------------------------------------
+;обработка канала 1
+NextKanal1:
+	RRF     StateKanal,F
+	INCF	WhatHappy,F
+	DECFSZ  Delitel1        ;входной счетчик
+	GOTO    NextKanal2
+	MOVLW   Params1         ;указатель на структуру
+	MOVWF   FSR
+	MOVF    ConstDel1,W     ;константа канала,W
+	MOVWF   Delitel1        ;входной счетчик
+	MOVF    (PositionByte+Params1),W;управляющий байт,W
+	CALL    MainWork
+
+
+;--------------------------------------------------------------
+;обработка канала 2
+NextKanal2:
+	RRF     StateKanal,F
+	INCF	WhatHappy,F
+	DECFSZ  Delitel2        ;входной счетчик
+	GOTO    NextKanal3
+	MOVLW   Params2         ;указатель на структуру
+	MOVWF   FSR
+	MOVF    ConstDel2,W     ;константа канала,W
+	MOVWF   Delitel2        ;входной счетчик
+	MOVF    (PositionByte+Params2),W;управляющий байт,W
+	CALL    MainWork
+
+;--------------------------------------------------------------
+;обработка канала 3
+NextKanal3:
+	RRF     StateKanal,F
+	INCF	WhatHappy,F
+	DECFSZ  Delitel3        ;входной счетчик
+	GOTO    NextKanal4
+	MOVLW   Params3         ;указатель на структуру
+	MOVWF   FSR
+	MOVF    ConstDel3,W     ;константа канала,W
+	MOVWF   Delitel3        ;входной счетчик
+	MOVF    (PositionByte+Params3),W;управляющий байт,W
+	CALL    MainWork
+;--------------------------------------------------------------
+;обработка канала 4
+NextKanal4:
+	RRF     StateKanal,F
+	INCF	WhatHappy,F
+	DECFSZ  Delitel4        ;входной счетчик
+	GOTO    NextKanal5
+	MOVLW   Params4         ;указатель на структуру
+	MOVWF   FSR
+	MOVF    ConstDel4,W     ;константа канала,W
+	MOVWF   Delitel4        ;входной счетчик
+	MOVF    (PositionByte+Params4),W;управляющий байт,W
+	CALL    MainWork
+
+;--------------------------------------------------------------
+;обработка канала 5
+NextKanal5:
+	RRF     StateKanal,F
+	INCF	WhatHappy,F
+	DECFSZ  Delitel5        ;входной счетчик
+	GOTO    NextKanal6
+	MOVLW   Params5         ;указатель на структуру
+	MOVWF   FSR
+	MOVF    ConstDel5,W     ;константа канала,W
+	MOVWF   Delitel5        ;входной счетчик
+	MOVF    (PositionByte+Params5),W;управляющий байт,W
+	CALL    MainWork
+
+;--------------------------------------------------------------
+;обработка канала 6
+NextKanal6:
+	RRF     StateKanal,F
+	INCF	WhatHappy,F
+	DECFSZ  Delitel6        ;входной счетчик
+	GOTO    NextKanal7
+	MOVLW   Params6         ;указатель на структуру
+	MOVWF   FSR
+	MOVF    ConstDel6,W     ;константа канала,W
+	MOVWF   Delitel6        ;входной счетчик
+	MOVF    (PositionByte+Params6),W;управляющий байт,W
+	CALL    MainWork
+;--------------------------------------------------------------
+;обработка канала 7
+NextKanal7:
+	RRF     StateKanal,F
+	INCF	WhatHappy,F
+	DECFSZ  Delitel7        ;входной счетчик
+	GOTO    IdleCikl
+	MOVLW   Params7         ;указатель на структуру
+	MOVWF   FSR
+	MOVF    ConstDel7,W     ;константа канала,W
+	MOVWF   Delitel7        ;входной счетчик
+	MOVF    (PositionByte+Params7),W;управляющий байт,W
+	CALL    MainWork
+
+
+NextKanal8:
+;--------------------------------------------------------------
+	GOTO    IdleCikl
+;------------------------------------------------
+;/*
+;-------
+;заталкивание байта в очередь на передачу в IBM
+;	MOVF    (PositionData+Params0),W
+;	ANDLW   0FH
+;	IORLW   20H
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+;	CLRF PCLATH             ;Т.К.обращение к адресу 000-0FFH
+;	CALL    PutWordTransmit
+;	BSF     INTCON,GIE      ;востанавливаем прерывания
+;	BCF     STATUS,RP0      ;обращение к нулевой странице
+;	SWAPF   (PositionData+Params0),W
+;	ANDLW   0FH
+;	IORLW   30H
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+;	CALL    PutWordTransmit
+;	BSF     INTCON,GIE      ;востанавливаем прерывания
+;	MOVLW   00H             ;данные нулевого канала
+;	CALL    PutWordTransmit
+;	BSF     INTCON,GIE      ;востанавливаем прерывания
+;---------------------------------------
+;*/
+;Конец обработки каналов
+;Другие работы
+EndOfJob:
+	BSF     STATUS,RP0
+	MOVF    LengthLineTransmit,W        ;проверяем длину очереди передачи
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;проверить, влияет ли данная команда на флаг Z ==ДА
+	BTFSC   STATUS,Z        ;Очередь заполнена?
+	GOTO    NextJob         ;Данных навалом
+	BCF     STATUS,RP0
+;===================================================
+;обработка передачи канала 0
+;===================================================
+	BTFSS   ItIsTransmit,0  ;есть данные для передачи ?
+	GOTO	LoadData0	;нету,но вдруг можно загрузить
+	DECFSZ  TrDelitel0,F
+	GOTO    TrKanal1
+;//загрузка нового байта
+	BTFSS   NextData,0      ;канал 0 данные загружать ?
+	GOTO	NotLoadKanal0	;нет не надо,идем на данные канала 0
+LoadData0:
+	BTFSC	NumberBegin,0	;номер набирать будем ?
+	GOTO	NotLoadKanal0	;да непременно
+	BSF     STATUS,RP0      ;Выбор банка 1
+	BTFSS	QueueFull,0	;байт в очереди канала 0 есть ?
+	GOTO	StopKanal0	;передачу канала остановить!
+	BCF	QueueFull,0	;очищаем очередь
+	MOVF	070H,W		;берем байт с очереди
+	BCF     STATUS,RP0      ;меняем банк
+	MOVWF	TrData0		;заталкиваем в ячейку канала 0
+	MOVLW	5
+	MOVWF	CountData0	;количество битов
+	BCF	NextData,0      ;данные загрузили
+	BSF	ItIsStart,0	;загрузить стартовую посылку
+	BSF   	ItIsTransmit,0  ;и начать передачу канала 0
+
+	MOVLW	50H		;канал 0 освободился
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+
+
+
+
+NotLoadKanal0:
+	BTFSS	NumberBegin,0
+	GOTO 	MayBeLoad0	;все-таки попробуем загрузить данные
+;//набор номера
+	BSF     ItIsTransmit,0  ;
+	MOVLW	DelayNull
+	BTFSC   TrStateKanal,Line0  ;канал 0 в единице
+	MOVLW	DelayOne        ;нет в нуле
+	MOVWF	TrDelitel0
+	MOVLW	LineMask0
+	XORWF   TrStateKanal,F
+	BTFSC   TrStateKanal,Line0  ;канал 0 стал в единице
+	GOTO	TrKanal1	;нет еще
+	DECFSZ	TrData0,F 	;да стал, надо проверить конец набора
+	GOTO	TrKanal1	;нет цифра еще не кончилась
+	BCF	NumberBegin,0	;набор номера кончился
+	BSF     NextData,0      ;канал 0 данные загружать
+	MOVLW	60H		;информация о конце набора номера канала 0
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+	GOTO	TrKanal1
+
+MayBeLoad0:
+
+	BTFSS   ItIsStart,0     ;нужно пускать старт канала 0?
+	GOTO    NotStartKanal0
+;установка стартовой посылки канала 0
+	BCF     ItIsStart,0     ;канал 0
+	BCF	ItIsStop,0	;автоматом сброс стопа 0
+	BCF     STATUS,C
+	RLF     ConstDel0,W     ;перезагрузка делителя удвоенным значением (канал 0)
+	MOVWF   TrDelitel0      ;канал 0
+	BSF     TrStateKanal,Line0  ;канал 0 старт
+	GOTO    TrKanal1
+;//остановка передачи канала 0
+StopKanal0:
+	BCF     STATUS,RP0      ;меняем банк
+	BCF   	ItIsTransmit,0  ;данных для передачи нет
+	GOTO    TrKanal1
+
+NotStartKanal0:
+	BTFSS   ItIsStop,0      ;канал 0
+	GOTO    NotStopKanal0   ;нужно пускать стоп  канала 0?
+;установка стоповой посылки канала 0
+	BCF     ItIsStop,0      ;канал 0
+	BSF	NextData,0      ;данные загрузить надо потом
+	BCF     STATUS,C
+	RLF     ConstDel0,W     ;перезагрузка делителя удвоенным значением
+	ADDWF   ConstDel0,W     ;полторы стоповой посылки
+	MOVWF   TrDelitel0      ;канал 0
+	BCF     TrStateKanal,Line0  ;канал 0 stop
+	GOTO    TrKanal1
+;--------------
+;Ну если ни старт ни стоп то передача данных
+NotStopKanal0:
+;// передача данных канала (битов)
+
+	BSF     ItIsStop,0      ;может быть следующий стоповый
+	DECFSZ  CountData0,F    ;а вдруг этот бит последний?
+	BCF     ItIsStop,0      ;нет следующий не стоповый
+	BCF     TrStateKanal,Line0  ;канал 0
+	RRF     TrData0,F       ;канал 0
+	BTFSS   STATUS,C
+	BSF     TrStateKanal,Line0  ;канал 0
+	BCF     STATUS,C
+	RLF     ConstDel0,W     ;перезагрузка делителя удвоенным значением (канал 0)
+	MOVWF   TrDelitel0      ;канал 0
+;====================================================
+;обработка передачи канала 1
+;====================================================
+TrKanal1:
+	BTFSS   ItIsTransmit,1  ;есть данные для передачи канала 1?
+	GOTO    LoadData1	;нету,но вдруг можно загрузить
+	DECFSZ  TrDelitel1,F    ;канал 1
+	GOTO    TrKanal2        ;следующий канал
+;------------------------------------------------
+;//загрузка нового байта
+	BTFSS   NextData,1      ;канал 1 данные загружать ?
+	GOTO	NotLoadKanal1	;нет не надо,идем на данные канала 1
+LoadData1:
+	BTFSC	NumberBegin,1	;номер набирать будем ?
+	GOTO    NotLoadKanal1	;да непременно
+
+	BSF     STATUS,RP0      ;Выбор банка 1
+	BTFSS	QueueFull,1	;байт в очереди канала 1 есть ?
+	GOTO	StopKanal1	;передачу канала остановить!
+	BCF	QueueFull,1	;очищаем очередь
+	MOVF	071H,W		;берем байт с очереди
+	BCF     STATUS,RP0      ;меняем банк
+	MOVWF	TrData1		;заталкиваем в ячейку канала 1
+	MOVLW	5
+	MOVWF	CountData1	;количество битов
+	BCF	NextData,1      ;данные загрузили
+	BSF	ItIsStart,1	;загрузить стартовую посылку
+	BSF   	ItIsTransmit,1  ;и начать передачу канала 0
+
+
+	MOVLW	51H		;канал 1 освободился
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+
+NotLoadKanal1:
+	BTFSS	NumberBegin,1	;надо набирать номер канала 1
+	GOTO 	MayBeLoad1	;все-таки попробуем загрузить данные
+;//набор номера
+	BSF     ItIsTransmit,1
+	MOVLW	DelayNull
+	BTFSC   TrStateKanal,Line1  ;канал 1 в единице
+	MOVLW	DelayOne        ;нет в нуле
+	MOVWF	TrDelitel1
+	MOVLW	LineMask1	;инвертируем состояние канала 1
+	XORWF   TrStateKanal,F
+	BTFSC   TrStateKanal,Line1  ;канал 1 стал в единице
+	GOTO	TrKanal2	;нет еще
+	DECFSZ	TrData1,F 	;да стал, надо проверить конец набора
+	GOTO	TrKanal2	;нет цифра еще не кончилась
+	BSF     NextData,1      ;канал 1 данные загружать
+	BCF	NumberBegin,1	;набор номера кончился
+	MOVLW	61H		;информация о конце набора номера канала 0
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+	GOTO	TrKanal2
+
+MayBeLoad1:
+
+	BTFSS   ItIsStart,1     ;нужно пускать старт канала 1?
+	GOTO    NotStartKanal1  ;нет старта канала 1
+;установка стартовой посылки канала 1
+	BCF     ItIsStart,1     ;канал 1
+	BCF     STATUS,C
+	RLF     ConstDel1,W     ;перезагрузка делителя удвоенным значением (канал 1)
+	MOVWF   TrDelitel1      ;канал 1
+	BSF     TrStateKanal,Line1  ;канал 1 старт
+	GOTO    TrKanal2        ;следующий канал
+;//остановка передачи канала 1
+StopKanal1:
+	BCF     STATUS,RP0      ;меняем банк
+	BCF   	ItIsTransmit,1  ;данных для передачи нет
+	GOTO    TrKanal2
+
+NotStartKanal1:
+	BTFSS   ItIsStop,1      ;нужно пускать стоп  канала 1?
+	GOTO    NotStopKanal1   ;нет стопа канала 1
+;установка стоповой посылки канала 1
+	BCF     ItIsStop,1      ;канал 1
+	BSF	NextData,1      ;данные загрузить надо потом
+	BCF     STATUS,C
+	RLF     ConstDel1,W     ;перезагрузка делителя удвоенным значением
+	ADDWF   ConstDel1,W     ;полторы стоповой посылки
+	MOVWF   TrDelitel1      ;канал 1
+	BCF     TrStateKanal,Line1  ;канал 1 стоп
+
+	GOTO    TrKanal2        ;следующий канал
+;--------------
+;Ну если ни старт ни стоп то передача данных
+NotStopKanal1:
+	BSF     ItIsStop,1      ;может быть следующий стоповый (канал1)
+	DECFSZ  CountData1      ;а вдруг этот бит последний?
+	BCF     ItIsStop,1      ;нет следующий не стоповый (канал1)
+	BCF     TrStateKanal,Line1  ;канал 1
+	RRF     TrData1,F       ;канал 1
+	BTFSS   STATUS,C
+	BSF     TrStateKanal,Line1  ;канал 1
+	BCF     STATUS,C
+	RLF     ConstDel1,W     ;перезагрузка делителя удвоенным значением (канал 1)
+	MOVWF   TrDelitel1      ;канал 1
+;====================================================
+;обработка передачи канала 2
+;====================================================
+TrKanal2:
+	BTFSS   ItIsTransmit,2  ;есть данные для передачи канала 2?
+	GOTO	LoadData2	;нету,но вдруг можно загрузить
+	DECFSZ  TrDelitel2,F    ;канал 2
+	GOTO    TrKanal3        ;следующий канал
+;------------------------------------------------
+;//загрузка нового байта
+	BTFSS   NextData,2      ;канал 2 данные загружать ?
+	GOTO	NotLoadKanal2	;нет не надо,идем на данные канала 2
+LoadData2:
+	BTFSC	NumberBegin,2	;номер набирать будем ?
+	GOTO	NotLoadKanal2	;да непременно
+	BSF     STATUS,RP0      ;Выбор банка 1
+	BTFSS	QueueFull,2	;байт в очереди канала 2 есть ?
+	GOTO	StopKanal2	;передачу канала остановить!
+	BCF	QueueFull,2	;очищаем очередь
+	MOVF	072H,W		;берем байт с очереди
+	BCF     STATUS,RP0      ;меняем банк
+	MOVWF	TrData2		;заталкиваем в ячейку канала 2
+	MOVLW	5
+	MOVWF	CountData2	;количество битов
+	BCF	NextData,2      ;данные загрузили
+	BSF	ItIsStart,2	;загрузить стартовую посылку
+	BSF   	ItIsTransmit,2  ;и начать передачу канала 0
+
+
+	MOVLW	52H		;канал 2 освободился
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+
+NotLoadKanal2:
+	BTFSS	NumberBegin,2
+	GOTO 	MayBeLoad2	;все-таки попробуем загрузить данные
+;//набор номера
+	BSF     ItIsTransmit,2  ;
+	MOVLW	DelayNull
+	BTFSC   TrStateKanal,Line2  ;канал 2 в единице
+	MOVLW	DelayOne        ;нет в нуле
+	MOVWF	TrDelitel2
+	MOVLW	LineMask2
+	XORWF   TrStateKanal,F
+	BTFSC   TrStateKanal,Line2  ;канал 2 стал в единице
+	GOTO	TrKanal3	;нет еще
+	DECFSZ	TrData2,F 	;да стал, надо проверить конец набора
+	GOTO	TrKanal3	;нет цифра еще не кончилась
+	BCF	NumberBegin,2	;набор номера кончился
+	BSF     NextData,2      ;канал 2 данные загружать
+	MOVLW	62H		;информация о конце набора номера канала 0
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+	GOTO	TrKanal3
+
+MayBeLoad2:
+	BTFSS   ItIsStart,2     ;нужно пускать старт канала 2?
+	GOTO    NotStartKanal2  ;нет старта канала 2
+;установка стартовой посылки канала 2
+	BCF     ItIsStart,2     ;канал 2
+	BCF     STATUS,C
+	RLF     ConstDel2,W     ;перезагрузка делителя удвоенным значением (канал 2)
+	MOVWF   TrDelitel2      ;канал 2
+	BSF     TrStateKanal,Line2  ;канал 2 старт
+	GOTO    TrKanal3        ;следующий канал
+;//остановка передачи канала 2
+StopKanal2:
+	BCF     STATUS,RP0      ;меняем банк
+	BCF   	ItIsTransmit,2  ;данных для передачи нет
+	GOTO    TrKanal3
+NotStartKanal2:
+	BTFSS   ItIsStop,2      ;нужно пускать стоп  канала 2?
+	GOTO    NotStopKanal2   ;нет стопа канала 2
+;установка стоповой посылки канала 2
+	BCF     ItIsStop,2      ;канал 2
+	BSF	NextData,2      ;данные загрузить надо потом
+	BCF     STATUS,C
+	RLF     ConstDel2,W     ;перезагрузка делителя удвоенным значением
+	ADDWF   ConstDel2,W     ;полторы стоповой посылки
+	MOVWF   TrDelitel2      ;канал 2
+	BCF     TrStateKanal,Line2  ;канал 2 стоп
+;сюда вставить загрузку байта из очереди на передачу
+
+	GOTO    TrKanal3        ;следующий канал
+;--------------
+;Ну если ни старт ни стоп то передача данных
+NotStopKanal2:
+	BSF     ItIsStop,2      ;может быть следующий стоповый (канал2)
+	DECFSZ  CountData2,F    ;а вдруг этот бит последний?
+	BCF     ItIsStop,2      ;нет следующий не стоповый (канал2)
+	BCF     TrStateKanal,Line2  ;канал 2
+	RRF     TrData2,F       ;канал 2
+	BTFSS   STATUS,C
+	BSF     TrStateKanal,Line2  ;канал 2
+	BCF     STATUS,C
+	RLF     ConstDel2,W     ;перезагрузка делителя удвоенным значением (канал 2)
+	MOVWF   TrDelitel2      ;канал 2
+;====================================================
+;обработка передачи канала 3
+;====================================================
+TrKanal3:
+	BTFSS   ItIsTransmit,3  ;есть данные для передачи канала 3?
+	GOTO	LoadData3	;нету,но вдруг можно загрузить
+	DECFSZ  TrDelitel3,F    ;канал 3
+	GOTO    TrKanal4        ;следующий канал
+;------------------------------------------------
+;//загрузка нового байта
+	BTFSS   NextData,3      ;канал 3 данные загружать ?
+	GOTO	NotLoadKanal3	;нет не надо,идем на данные канала 3
+LoadData3:
+	BTFSC	NumberBegin,3	;номер набирать будем ?
+	GOTO	NotLoadKanal3	;да непременно
+	BSF     STATUS,RP0      ;Выбор банка 1
+	BTFSS	QueueFull,3	;байт в очереди канала 3 есть ?
+	GOTO	StopKanal3	;передачу канала остановить!
+	BCF	QueueFull,3	;очищаем очередь
+	MOVF	073H,W		;берем байт с очереди
+	BCF     STATUS,RP0      ;меняем банк
+	MOVWF	TrData3		;заталкиваем в ячейку канала 3
+	MOVLW	5
+	MOVWF	CountData3	;количество битов
+	BCF	NextData,3      ;данные загрузили
+	BSF	ItIsStart,3	;загрузить стартовую посылку
+	BSF   	ItIsTransmit,3  ;и начать передачу канала 0
+
+	MOVLW	53H		;канал 3 освободился
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+
+NotLoadKanal3:
+	BTFSS	NumberBegin,3
+	GOTO 	MayBeLoad3	;все-таки попробуем загрузить данные
+;//набор номера
+	BSF     ItIsTransmit,3  ;
+	MOVLW	DelayNull
+	BTFSC   TrStateKanal,Line3  ;канал 3 в единице
+	MOVLW	DelayOne        ;нет в нуле
+	MOVWF	TrDelitel3
+	MOVLW	LineMask3
+	XORWF   TrStateKanal,F
+	BTFSC   TrStateKanal,Line3  ;канал 3 стал в единице
+	GOTO	TrKanal4	;нет еще
+	DECFSZ	TrData3,F 	;да стал, надо проверить конец набора
+	GOTO	TrKanal4	;нет цифра еще не кончилась
+	BCF	NumberBegin,3	;набор номера кончился
+	BSF     NextData,3      ;канал 3 данные загружать
+	MOVLW	63H		;информация о конце набора номера канала 0
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+	GOTO	TrKanal4
+
+MayBeLoad3:
+	BTFSS   ItIsStart,3     ;нужно пускать старт канала 3?
+	GOTO    NotStartKanal3  ;нет старта канала 3
+;установка стартовой посылки канала 3
+	BCF     ItIsStart,3     ;канал 3
+	BCF     STATUS,C
+	RLF     ConstDel3,W     ;перезагрузка делителя удвоенным значением (канал 3)
+	MOVWF   TrDelitel3      ;канал 3
+	BSF     TrStateKanal,Line3  ;канал 3 старт
+	GOTO    TrKanal4        ;следующий канал
+;//остановка передачи канала 3
+StopKanal3:
+	BCF     STATUS,RP0      ;меняем банк
+	BCF   	ItIsTransmit,3  ;данных для передачи нет
+	GOTO    TrKanal4
+NotStartKanal3:
+	BTFSS   ItIsStop,3      ;нужно пускать стоп  канала 3?
+	GOTO    NotStopKanal3   ;нет стопа канала 3
+;установка стоповой посылки канала 3
+	BCF     ItIsStop,3      ;канал 3
+	BSF	NextData,3      ;данные загрузить надо потом
+	BCF     STATUS,C
+	RLF     ConstDel3,W     ;перезагрузка делителя удвоенным значением
+	ADDWF   ConstDel3,W     ;полторы стоповой посылки
+	MOVWF   TrDelitel3      ;канал 3
+	BCF     TrStateKanal,Line3  ;канал 3 стоп
+;сюда вставить загрузку байта из очереди на передачу
+
+	GOTO    TrKanal4        ;следующий канал
+;--------------
+;Ну если ни старт ни стоп то передача данных
+NotStopKanal3:
+	BSF     ItIsStop,3      ;может быть следующий стоповый (канал3)
+	DECFSZ  CountData3,F    ;а вдруг этот бит последний?
+	BCF     ItIsStop,3      ;нет следующий не стоповый (канал3)
+	BCF     TrStateKanal,Line3  ;канал 3
+	RRF     TrData3,F       ;канал 3
+	BTFSS   STATUS,C
+	BSF     TrStateKanal,Line3  ;канал 3
+	BCF     STATUS,C
+	RLF     ConstDel3,W     ;перезагрузка делителя удвоенным значением (канал 3)
+	MOVWF   TrDelitel3      ;канал 3
+;====================================================
+;обработка передачи канала 4
+;====================================================
+TrKanal4:
+	BTFSS   ItIsTransmit,4  ;есть данные для передачи канала 4?
+	GOTO	LoadData4	;нету,но вдруг можно загрузить
+	DECFSZ  TrDelitel4,F    ;канал 4
+	GOTO    TrKanal5        ;следующий канал
+;------------------------------------------------
+;//загрузка нового байта
+	BTFSS   NextData,4      ;канал 4 данные загружать ?
+	GOTO	NotLoadKanal4	;нет не надо,идем на данные канала 4
+LoadData4:
+	BTFSC	NumberBegin,4	;номер набирать будем ?
+	GOTO	NotLoadKanal4	;да непременно
+	BSF     STATUS,RP0      ;Выбор банка 1
+	BTFSS	QueueFull,4	;байт в очереди канала 4 есть ?
+	GOTO	StopKanal4	;передачу канала остановить!
+	BCF	QueueFull,4	;очищаем очередь
+	MOVF	074H,W		;берем байт с очереди
+	BCF     STATUS,RP0      ;меняем банк
+	MOVWF	TrData4		;заталкиваем в ячейку канала 4
+	MOVLW	5
+	MOVWF	CountData4	;количество битов
+	BCF	NextData,4      ;данные загрузили
+	BSF	ItIsStart,4	;загрузить стартовую посылку
+	BSF   	ItIsTransmit,4  ;и начать передачу канала 0
+
+	MOVLW	54H		;канал 4 освободился
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+NotLoadKanal4:
+	BTFSS	NumberBegin,4
+	GOTO 	MayBeLoad4	;все-таки попробуем загрузить данные
+;//набор номера
+	BSF     ItIsTransmit,4  ;
+	MOVLW	DelayNull
+	BTFSC   TrStateKanal,Line4  ;канал 4 в единице
+	MOVLW	DelayOne        ;нет в нуле
+	MOVWF	TrDelitel4
+	MOVLW	LineMask4
+	XORWF   TrStateKanal,F
+	BTFSC   TrStateKanal,Line4  ;канал 4 стал в единице
+	GOTO	TrKanal5	;нет еще
+	DECFSZ	TrData4,F 	;да стал, надо проверить конец набора
+	GOTO	TrKanal5	;нет цифра еще не кончилась
+	BCF	NumberBegin,4	;набор номера кончился
+	BSF     NextData,4      ;канал 4 данные загружать
+	MOVLW	64H		;информация о конце набора номера канала 0
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+	GOTO	TrKanal5
+
+MayBeLoad4:
+	BTFSS   ItIsStart,4     ;нужно пускать старт канала 4?
+	GOTO    NotStartKanal4  ;нет старта канала 4
+;установка стартовой посылки канала 4
+	BCF     ItIsStart,4     ;канал 4
+	BCF     STATUS,C
+	RLF     ConstDel4,W     ;перезагрузка делителя удвоенным значением (канал 4)
+	MOVWF   TrDelitel4      ;канал 4
+	BSF     TrStateKanal,Line4  ;канал 4 старт
+	GOTO    TrKanal5        ;следующий канал
+;//остановка передачи канала 4
+StopKanal4:
+	BCF     STATUS,RP0      ;меняем банк
+	BCF   	ItIsTransmit,4  ;данных для передачи нет
+	GOTO    TrKanal5
+NotStartKanal4:
+	BTFSS   ItIsStop,4      ;нужно пускать стоп  канала 4?
+	GOTO    NotStopKanal4   ;нет стопа канала 4
+;установка стоповой посылки канала 4
+	BCF     ItIsStop,4      ;канал 4
+	BSF	NextData,4      ;данные загрузить надо потом
+	BCF     STATUS,C
+	RLF     ConstDel4,W     ;перезагрузка делителя удвоенным значением
+	ADDWF   ConstDel4,W     ;полторы стоповой посылки
+	MOVWF   TrDelitel4      ;канал 4
+	BCF     TrStateKanal,Line4  ;канал 4 стоп
+;сюда вставить загрузку байта из очереди на передачу
+
+	GOTO    TrKanal5        ;следующий канал
+;--------------
+;Ну если ни старт ни стоп то передача данных
+NotStopKanal4:
+	BSF     ItIsStop,4      ;может быть следующий стоповый (канал 4)
+	DECFSZ  CountData4,F    ;а вдруг этот бит последний?
+	BCF     ItIsStop,4      ;нет следующий не стоповый (канал 4)
+	BCF     TrStateKanal,Line4  ;канал 4
+	RRF     TrData4,F       ;канал 4
+	BTFSS   STATUS,C
+	BSF     TrStateKanal,Line4  ;канал 4
+	BCF     STATUS,C
+	RLF     ConstDel4,W     ;перезагрузка делителя удвоенным значением (канал 4)
+	MOVWF   TrDelitel4      ;канал 4
+;====================================================
+;обработка передачи канала 5
+;====================================================
+TrKanal5:
+	BTFSS   ItIsTransmit,5  ;есть данные для передачи канала 5?
+	GOTO	LoadData5	;нету,но вдруг можно загрузить
+	DECFSZ  TrDelitel5,F    ;канал 5
+	GOTO    TrKanal6        ;следующий канал
+;------------------------------------------------
+;//загрузка нового байта
+	BTFSS   NextData,5      ;канал 5 данные загружать ?
+	GOTO	NotLoadKanal5	;нет не надо,идем на данные канала 5
+LoadData5:
+	BTFSC	NumberBegin,5	;номер набирать будем ?
+	GOTO	NotLoadKanal5	;да непременно
+	BSF     STATUS,RP0      ;Выбор банка 1
+	BTFSS	QueueFull,5	;байт в очереди канала 5 есть ?
+	GOTO	StopKanal5	;передачу канала остановить!
+	BCF	QueueFull,5	;очищаем очередь
+	MOVF	075H,W		;берем байт с очереди
+	BCF     STATUS,RP0      ;меняем банк
+	MOVWF	TrData5		;заталкиваем в ячейку канала 5
+	MOVLW	5
+	MOVWF	CountData5	;количество битов
+	BCF	NextData,5      ;данные загрузили
+	BSF	ItIsStart,5	;загрузить стартовую посылку
+	BSF   	ItIsTransmit,5  ;и начать передачу канала 0
+
+	MOVLW	55H		;канал 5 освободился
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+NotLoadKanal5:
+	BTFSS	NumberBegin,5
+	GOTO 	MayBeLoad5	;все-таки попробуем загрузить данные
+;//набор номера
+	BSF     ItIsTransmit,5  ;
+	MOVLW	DelayNull
+	BTFSC   TrStateKanal,Line5  ;канал 5 в единице
+	MOVLW	DelayOne        ;нет в нуле
+	MOVWF	TrDelitel5
+	MOVLW   LineMask5
+	XORWF   TrStateKanal,F
+	BTFSC   TrStateKanal,Line5  ;канал 5 стал в единице
+	GOTO	TrKanal6	;нет еще
+	DECFSZ	TrData5,F 	;да стал, надо проверить конец набора
+	GOTO	TrKanal6	;нет цифра еще не кончилась
+	BCF	NumberBegin,5	;набор номера кончился
+	BSF     NextData,5      ;канал 5 данные загружать
+	MOVLW	65H		;информация о конце набора номера канала 0
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+	GOTO	TrKanal6
+
+MayBeLoad5:
+	BTFSS   ItIsStart,5     ;нужно пускать старт канала 5?
+	GOTO    NotStartKanal5  ;нет старта канала 5
+;установка стартовой посылки канала 5
+	BCF     ItIsStart,5     ;канал 5
+	BCF     STATUS,C
+	RLF     ConstDel5,W     ;перезагрузка делителя удвоенным значением (канал 5)
+	MOVWF   TrDelitel5      ;канал 5
+	BSF     TrStateKanal,Line5  ;канал 5 старт
+	GOTO    TrKanal6        ;следующий канал
+;//остановка передачи канала 5
+StopKanal5:
+	BCF     STATUS,RP0      ;меняем банк
+	BCF   	ItIsTransmit,5  ;данных для передачи нет
+	GOTO    TrKanal6
+NotStartKanal5:
+	BTFSS   ItIsStop,5      ;нужно пускать стоп  канала 5?
+	GOTO    NotStopKanal5   ;нет стопа канала 5
+;установка стоповой посылки канала 5
+	BCF     ItIsStop,5      ;канал 5
+	BSF	NextData,5      ;данные загрузить надо потом
+	BCF     STATUS,C
+	RLF     ConstDel5,W     ;перезагрузка делителя удвоенным значением
+	ADDWF   ConstDel5,W     ;полторы стоповой посылки
+	MOVWF   TrDelitel5      ;канал 5
+	BCF     TrStateKanal,Line5  ;канал 5 стоп
+;сюда вставить загрузку байта из очереди на передачу
+
+	GOTO    TrKanal6        ;следующий канал
+;--------------
+;Ну если ни старт ни стоп то передача данных
+NotStopKanal5:
+	BSF     ItIsStop,5      ;может быть следующий стоповый (канал 5)
+	DECFSZ  CountData5,F    ;а вдруг этот бит последний?
+	BCF     ItIsStop,5      ;нет следующий не стоповый (канал 5)
+	BCF     TrStateKanal,Line5  ;канал 5
+	RRF     TrData5,F       ;канал 5
+	BTFSS   STATUS,C
+	BSF     TrStateKanal,Line5  ;канал 5
+	BCF     STATUS,C
+	RLF     ConstDel5,W     ;перезагрузка делителя удвоенным значением (канал 5)
+	MOVWF   TrDelitel5      ;канал 5
+;====================================================
+;обработка передачи канала 6
+;====================================================
+TrKanal6:
+	BTFSS   ItIsTransmit,6  ;есть данные для передачи канала 6?
+	GOTO	LoadData6	;нету,но вдруг можно загрузить
+	DECFSZ  TrDelitel6,F    ;канал 6
+	GOTO    TrKanal7        ;следующий канал
+;------------------------------------------------
+;//загрузка нового байта
+	BTFSS   NextData,6      ;канал 6 данные загружать ?
+	GOTO	NotLoadKanal6	;нет не надо,идем на данные канала 6
+LoadData6:
+	BTFSC	NumberBegin,6	;номер набирать будем ?
+	GOTO	NotLoadKanal6	;да непременно
+	BSF     STATUS,RP0      ;Выбор банка 1
+	BTFSS	QueueFull,6	;байт в очереди канала 6 есть ?
+	GOTO	StopKanal6	;передачу канала остановить!
+	BCF	QueueFull,6	;очищаем очередь
+	MOVF	076H,W		;берем байт с очереди
+	BCF     STATUS,RP0      ;меняем банк
+	MOVWF	TrData6		;заталкиваем в ячейку канала 6
+	MOVLW	5
+	MOVWF	CountData6	;количество битов
+	BCF	NextData,6      ;данные загрузили
+	BSF	ItIsStart,6	;загрузить стартовую посылку
+	BSF   	ItIsTransmit,6  ;и начать передачу канала 0
+
+	MOVLW	56H		;канал 6 освободился
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+NotLoadKanal6:
+	BTFSS	NumberBegin,6
+	GOTO 	MayBeLoad6	;все-таки попробуем загрузить данные
+;//набор номера
+	BSF     ItIsTransmit,6  ;
+	MOVLW	DelayNull
+	BTFSC   TrStateKanal,Line6  ;канал 6 в единице
+	MOVLW	DelayOne        ;нет в нуле
+	MOVWF	TrDelitel6
+	MOVLW	LineMask6
+	XORWF   TrStateKanal,F
+	BTFSC   TrStateKanal,Line6  ;канал 6 стал в единице
+	GOTO	TrKanal7	;нет еще
+	DECFSZ	TrData6,F 	;да стал, надо проверить конец набора
+	GOTO	TrKanal7	;нет цифра еще не кончилась
+	BCF	NumberBegin,6	;набор номера кончился
+	BSF     NextData,6      ;канал 6 данные загружать
+	MOVLW	66H		;информация о конце набора номера канала 0
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+	GOTO	TrKanal7
+
+MayBeLoad6:
+	BTFSS   ItIsStart,6     ;нужно пускать старт канала 6?
+	GOTO    NotStartKanal6  ;нет старта канала 6
+;установка стартовой посылки канала 6
+	BCF     ItIsStart,6     ;канал 6
+	BCF     STATUS,C
+	RLF     ConstDel6,W     ;перезагрузка делителя удвоенным значением (канал 6)
+	MOVWF   TrDelitel6      ;канал 6
+	BSF     TrStateKanal,Line6  ;канал 6 старт
+	GOTO    TrKanal7        ;следующий канал
+;//остановка передачи канала 6
+StopKanal6:
+	BCF     STATUS,RP0      ;меняем банк
+	BCF   	ItIsTransmit,6  ;данных для передачи нет
+	GOTO    TrKanal7
+NotStartKanal6:
+	BTFSS   ItIsStop,6      ;нужно пускать стоп  канала 6?
+	GOTO    NotStopKanal6   ;нет стопа канала 6
+;установка стоповой посылки канала 6
+	BCF     ItIsStop,6      ;канал 6
+	BSF	NextData,6      ;данные загрузить надо потом
+	BCF     STATUS,C
+	RLF     ConstDel6,W     ;перезагрузка делителя удвоенным значением
+	ADDWF   ConstDel6,W     ;полторы стоповой посылки
+	MOVWF   TrDelitel6      ;канал 6
+	BCF     TrStateKanal,Line6  ;канал 6
+;сюда вставить загрузку байта из очереди на передачу
+
+	GOTO    TrKanal7        ;следующий канал
+;--------------
+;Ну если ни старт ни стоп то передача данных
+NotStopKanal6:
+	BSF     ItIsStop,6      ;может быть следующий стоповый (канал 6)
+	DECFSZ  CountData6,F    ;а вдруг этот бит последний?
+	BCF     ItIsStop,6      ;нет следующий не стоповый (канал 6)
+	BCF     TrStateKanal,Line6  ;канал 6
+	RRF     TrData6,F       ;канал 6
+	BTFSS   STATUS,C
+	BSF     TrStateKanal,Line6  ;канал 6
+	BCF     STATUS,C
+	RLF     ConstDel6,W     ;перезагрузка делителя удвоенным значением (канал 6)
+	MOVWF   TrDelitel6      ;канал 6
+;====================================================
+;обработка передачи канала 7
+;====================================================
+TrKanal7:
+	BTFSS   ItIsTransmit,7  ;есть данные для передачи канала 7?
+	GOTO	LoadData7	;нету,но вдруг можно загрузить
+	DECFSZ  TrDelitel7,F    ;канал 7
+	GOTO    TrKanal8        ;следующий канал
+;------------------------------------------------
+;//загрузка нового байта
+	BTFSS   NextData,7      ;канал 7 данные загружать ?
+	GOTO	NotLoadKanal7	;нет не надо,идем на данные канала 7
+LoadData7:
+	BTFSC	NumberBegin,7	;номер набирать будем ?
+	GOTO	NotLoadKanal7	;да непременно
+	BSF     STATUS,RP0      ;Выбор банка 1
+	BTFSS	QueueFull,7	;байт в очереди канала 7 есть ?
+	GOTO	StopKanal7	;передачу канала остановить!
+	BCF	QueueFull,7	;очищаем очередь
+	MOVF	077H,W		;берем байт с очереди
+	BCF     STATUS,RP0      ;меняем банк
+	MOVWF	TrData7		;заталкиваем в ячейку канала 7
+	MOVLW	5
+	MOVWF	CountData7	;количество битов
+	BCF	NextData,7      ;данные загрузили
+	BSF	ItIsStart,7	;загрузить стартовую посылку
+	BSF   	ItIsTransmit,7  ;и начать передачу канала 0
+
+	MOVLW	57H		;канал 7 освободился
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+NotLoadKanal7:
+	BTFSS	NumberBegin,7
+	GOTO 	MayBeLoad7	;все-таки попробуем загрузить данные
+;//набор номера
+	BSF     ItIsTransmit,7  ;
+	MOVLW	DelayNull
+	BTFSC   TrStateKanal,Line7  ;канал 7 в единице
+	MOVLW	DelayOne        ;нет в нуле
+	MOVWF	TrDelitel7
+	MOVLW	LineMask7
+	XORWF   TrStateKanal,F
+	BTFSC   TrStateKanal,Line7  ;канал 7 стал в единице
+	GOTO	TrKanal8	;нет еще
+	DECFSZ	TrData7,F 	;да стал, надо проверить конец набора
+	GOTO	TrKanal8	;нет цифра еще не кончилась
+	BCF	NumberBegin,7	;набор номера кончился
+	BSF     NextData,7      ;канал 7 данные загружать
+	MOVLW	67H		;информация о конце набора номера канала 0
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+	GOTO	TrKanal8
+
+MayBeLoad7:
+	BTFSS   ItIsStart,7     ;нужно пускать старт канала 7?
+	GOTO    NotStartKanal7  ;нет старта канала 7
+;установка стартовой посылки канала 7
+	BCF     ItIsStart,7     ;канал 7
+	BCF     STATUS,C
+	RLF     ConstDel7,W     ;перезагрузка делителя удвоенным значением (канал 7)
+	MOVWF   TrDelitel7      ;канал 7
+	BSF     TrStateKanal,Line7  ;канал 7
+	GOTO    TrKanal8        ;следующий канал
+;//остановка передачи канала 7
+StopKanal7:
+	BCF     STATUS,RP0      ;меняем банк
+	BCF   	ItIsTransmit,7  ;данных для передачи нет
+	GOTO    TrKanal8
+ NotStartKanal7:
+	BTFSS   ItIsStop,7      ;нужно пускать стоп  канала 7?
+	GOTO    NotStopKanal7   ;нет стопа канала 7
+;установка стоповой посылки канала 7
+	BCF     ItIsStop,7      ;канал 7
+	BSF	NextData,7      ;данные загрузить надо потом
+	BCF     STATUS,C
+	RLF     ConstDel7,W     ;перезагрузка делителя удвоенным значением
+	ADDWF   ConstDel7,W     ;полторы стоповой посылки
+	MOVWF   TrDelitel7      ;канал 7
+	BCF     TrStateKanal,Line7  ;канал 7
+;сюда вставить загрузку байта из очереди на передачу
+
+	GOTO    TrKanal8        ;следующий канал
+;--------------
+;Ну если ни старт ни стоп то передача данных
+NotStopKanal7:
+	BSF     ItIsStop,7      ;может быть следующий стоповый (канал 7)
+	DECFSZ  CountData7,F    ;а вдруг этот бит последний?
+	BCF     ItIsStop,7      ;нет следующий не стоповый (канал 7)
+	BCF     TrStateKanal,Line7  ;канал 7
+	RRF     TrData7,F       ;канал 7
+	BTFSS   STATUS,C
+	BSF     TrStateKanal,Line7  ;канал 7
+	BCF     STATUS,C
+	RLF     ConstDel7,W     ;перезагрузка делителя удвоенным значением (канал 7)
+	MOVWF   TrDelitel7      ;канал 7
+;====================================================
+;конец обработки передачи каналов
+TrKanal8:
+;====================================================
+
+	BSF     STATUS,RP0
+	DECF    LengthLineTransmit,F
+	MOVF    HeadLineTransmit,W
+	MOVWF   FSR
+	INCF    HeadLineTransmit,W
+	ANDLW   07H
+	IORLW   0B8H
+	MOVWF   HeadLineTransmit
+	BCF     STATUS,RP0      ;выбор НУЛЕВОЙ страницы для обращения
+	MOVF    TrStateKanal,W  ;считываум значение с промежуточной ячейки
+	MOVWF   INDF            ;данные в голову очереди
+
+
+NextJob:
+
+;------------------------------------------------
+;обработка попытки записать данные в ЦП
+	BCF	STATUS,RP0
+
+
+	MOVF	PORTA,W
+	ANDLW	03H
+	XORWF	StatePortA,F
+	BTFSC	StatePortA,0
+	BSF	FalseEnter,OkTransmit	;//изменение по OK
+	BTFSC   StatePortA,1
+	BSF	FalseEnter,BadTransmit	;//изменение на повтор
+	MOVWF	StatePortA		;//новое состояние в порт A
+MakeWrite:
+	BCF     INTCON,GIE
+	BTFSC   INTCON,GIE
+	GOTO    MakeWrite
+	BTFSC	FalseEnter,BadTransmit	;//повтор нужен ?
+	GOTO	SetTransmit
+;//а если повтор не нужен посмотрим есть ли что-нибудь на передачу
+	BSF STATUS,RP0          ;выбор первой страницы для обращения к очередям
+
+	MOVF    HeadTransmit,W  ;голова очереди передачи->W
+	SUBWF   HvostTransmit,W ;(HvostTransmit-HeadtTransmit)==0
+	BTFSC   STATUS,Z        ;в очереди что-нибудь есть?
+	GOTO    CPUNoChange     ;увы ничего нет
+	BCF	STATUS,RP0
+	BTFSS	FalseEnter,OkTransmit	;//передавать можно ?
+	GOTO	CPUNoChange	;//передавать пока нельзя
+SetTransmit:
+	BSF 	STATUS,RP0          ;выбор первой страницы
+	BSF	PIE1,TXIE
+	BCF	STATUS,RP0
+	BTFSS	RCSTA,OERR
+	GOTO 	NOTOVERRUN
+	BCF	RCSTA,CREN
+	BSF	RCSTA,CREN
+	BSF	RCSTA,SPEN
+NOTOVERRUN:
+
+;	BCF	STATUS,RP0
+;	MOVF	PORTEProm,W
+;	XORLW	00000001B
+;	MOVWF	PORTEProm
+;	MOVWF	PORTE
+
+CPUNoChange:
+	BSF     INTCON,GIE
+
+;------------------------------------------------
+;анализ буфера приема с центрального процессора
+	BSF     STATUS,RP0
+	MOVF    HeadReceve,W    ;голова очереди приема->W
+	MOVWF   FSR
+	SUBWF   HvostReceve,W ;(HvostReceve-HeadtReceve)==0
+	BTFSC   STATUS,Z        ;в очереди что-нибудь есть?
+	GOTO    CPUReceveFuck   ;увы ничего нет
+	INCF    HeadReceve,W    ;считываем данные с головы
+	ANDLW   0FH
+	IORLW   0E0H
+	MOVWF   HeadReceve
+	BCF     STATUS,RP0
+	MOVF    INDF,W          ;считываем с очереди
+	MOVWF   FromCPU
+	CLRF    PCLATH          ;обращение к адресу меньше 0100H
+	SWAPF   FromCPU,W
+	ANDLW   0FH
+	CALL    CaseCodeCPU     ;ДЕКОДИРОВАНИЕ И ОБРАБОТКА КОДА
+	BCF	STATUS,RP0
+CPUReceveFuck:
+
+;analis error two-line regim
+	BCF	STATUS,RP0
+	BTFSS	FalseEnter,ErrorTwoLine
+	GOTO	NoErrorTwoLine
+	BCF     FalseEnter,ErrorTwoLine
+
+	BSF	STATUS,RP0
+
+	MOVF	07AH,W		;dannie about error two-line regim
+
+	MOVWF	07BH
+	MOVWF	07CH
+
+
+	RRF	07BH,F
+	RLF	07DH,F
+
+	RRF	07BH,F
+	RLF	07DH,F
+
+	RRF	07BH,F
+	RLF	07DH,F
+
+	RRF	07BH,F
+	RLF	07DH,F
+
+	SWAPF	07DH,F
+
+	RLF	07CH,F
+	RRF	07DH,F
+
+	RLF	07CH,F
+	RRF	07DH,F
+
+	RLF	07CH,F
+	RRF	07DH,F
+
+	RLF	07CH,F
+	RRF	07DH,W
+
+	BCF	STATUS,RP0
+	IORWF	TrStateKanal,F
+	IORWF	TokPokoya,F
+NoErrorTwoLine:
+
+	BTFSS	FalseEnter,ErrorTwoOut
+	GOTO	NoErrorTwoOut
+
+	MOVLW	70H
+	CALL    PutWordTransmit
+	MOVF	07AH,W		;dannie about error two-line regim
+	CLRF	07AH
+	BCF	STATUS,RP0
+	BCF     FalseEnter,ErrorTwoOut
+;//данную команду ставить нельзя т.к. в прерывании также выводятся данные
+;//	BSF     INTCON,GIE      ;востанавливаем прерывания
+
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+NoErrorTwoOut:
+;--------------------------------------------------
+;запись данных в ЦАП
+	BCF	STATUS,RP0
+	BTFSS	FalseEnter,BeginDACing	;//будем DAC-ать ?
+	GOTO	FuckingDACing		;//А ну их
+	BTFSS	FalseEnter,DACEnableAdr ;//адрес передаем
+	GOTO	DataToDAC		;//пеердаем данные
+	BCF	PORTEProm,DAC_DATA
+	BSF	STATUS,RP0
+	RRF	AdresOfDAC,F		;//выдвигаем один бит адреса
+	BCF	STATUS,RP0
+	BTFSC	STATUS,C		;//если он нуль ничего не делаем
+	BSF	PORTEProm,DAC_DATA	;//иначе устанавливаем 1
+	MOVF	PORTEProm,W
+	MOVWF	PORTE			;//загоняем данные в порт
+
+	BSF	PORTEProm,DAC_CLC	;//записываем данные стробом
+	MOVF	PORTEProm,W
+	MOVWF	PORTE			;//загоняем данные в порт
+
+	BSF	STATUS,RP0
+	DECFSZ	CounterDAC,F
+	GOTO	AdresNotEnd
+	MOVLW	8
+	MOVWF	CounterDAC		;//будет 8 байт
+	BCF	STATUS,RP0
+	BCF	FalseEnter,DACEnableAdr ;//будем передавать данные
+	GOTO    AdresNotEnd		;//пока все
+DataToDAC:
+	BCF	PORTEProm,DAC_DATA
+	RLF	DataRele,F		;//выдвигаем один бит данных
+	BTFSC	STATUS,C		;//если он нуль ничего не делаем
+	BSF	PORTEProm,DAC_DATA	;//иначе устанавливаем 1
+	MOVF	PORTEProm,W
+	MOVWF	PORTE			;//загоняем данные в порт
+
+	BSF	PORTEProm,DAC_CLC	;//записываем данные стробом
+	MOVF	PORTEProm,W
+	MOVWF	PORTE			;//загоняем данные в порт
+
+	BSF	STATUS,RP0
+	DECFSZ	CounterDAC,F
+	GOTO	AdresNotEnd
+	BCF	STATUS,RP0
+	BCF	FalseEnter,BeginDACing ;//передача кончилась
+
+
+
+AdresNotEnd:
+	BCF	STATUS,RP0
+	BCF	PORTEProm,DAC_CLC	;//строб сбрасываем
+	MOVF	PORTEProm,W
+	MOVWF	PORTE			;//загоняем данные в порт
+	BTFSC	FalseEnter,BeginDACing  ;//передача кончилась?
+	GOTO	FuckingDACing
+	BSF	PORTEProm,DAC_CSS	;//заканчиваем работу ЦАПА
+	MOVF	PORTEProm,W
+	MOVWF	PORTE			;//загоняем данные в порт
+
+FuckingDACing:
+
+	GOTO    IdleCikl
