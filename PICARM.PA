@@ -857,6 +857,7 @@ HookOne:
 HookZero:
 	BTFSC   StateKanal,0    ;Проверка  бита приема
 	RETLW   0
+        CLRF    INDF
 	INCF    FSR,F
 	INCF    FSR,F
 	INCF    INDF,F
@@ -864,17 +865,28 @@ HookZero:
 
 ;//==============================================
 HookSecondZero:
-	CLRF    INDF
-	INCF    FSR,F
-	MOVLW   (GoingOnPosilka-2)  ;счетчик выхода на посылку
-	MOVWF   INDF
-	INCF    FSR,F
-	DECF    INDF,F
+        BTFSS   StateKanal,0
+	INCF    INDF,F
+        BTFSC   INDF,3
+        GOTO    StartFound
+
+	INCF    FSR,F     ;выходим на счетчик выхода на посылку
+        INCF    FSR,F     ;выходим на указатель функции
+	DECF    INDF,F    ;если сейчас единица, то вернемся назад HookZero
 	BTFSC   StateKanal,0    ;Проверка бита приема
+	RETLW   0         ;вылетаем на HookZero
+
+	INCF    INDF,F    ;пока усе нормально, остаемся здесь же
 	RETLW   0
-	INCF    INDF,F
-	INCF    INDF,F
+StartFound:
+        CLRF    INDF    ;обнуляем количество единиц
+	INCF    FSR,F   ;выходим к счетчику выхода на посылку
+	MOVLW   (GoingOnPosilka-9)  ;счетчик выхода на посылку
+	MOVWF   INDF
+	INCF    FSR,F   ;выходим на указатель функции
+	INCF    INDF,F    ;пока усе нормально, уходим на анализ старта
 	RETLW   0
+
 ;//==============================================
 HookStart:
 	BTFSC   StateKanal,0
@@ -939,7 +951,7 @@ LastPosilka:
 	DECF	FSR,F
 	INCF	INDF,F    ;номер функции увеличиваем
 	DECF	FSR,F
-	MOVLW	PolovinaPerioda     ;/!!!GoingOnPosilka  ;константа счетчика выхода на посылку
+	MOVLW	GoingOnPosilka  ;константа счетчика выхода на посылку
 	MOVWF   INDF      ;счетчик выхода на посылку перезагружаем
 	DECF	FSR,F
 	CLRF	INDF      ;счетчик единиц в выборке обнуляем
@@ -977,11 +989,13 @@ HookStop:
 	RETLW   0
 	DECF    FSR,F
 
-;srtf	MOVLW   1          ;/!!! PolovinaPerioda ;Кoнстанта половины периода
-;srtf	SUBWF   INDF,W
-;srtf	BTFSS   STATUS,C
-;//проверку дробовых искажений пришлось вообще выкинуть на стопе
-	BTFSS   StateKanal,0
+	MOVLW   PolovinaPerioda ;Кoнстанта половины периода
+	SUBWF   INDF,W
+	BTFSS   STATUS,C
+
+;srtf;//проверку дробовых искажений пришлось вообще выкинуть на стопе
+;srtf	BTFSS   StateKanal,0
+;а потом опять вернуть
 	GOTO    NotStop
 ;вывод данных будем вести теперь после стопа srtf
 	INCF    FSR,F
