@@ -248,8 +248,7 @@ FalseEnter      db 1
 	DACEnableAdr	EQU	4 ;разбираемся с адресом
 	ErrorTwoLine	EQU	5 ;ecli bit ustanovlen- oshibka two-line regim
 	BeginDACing	EQU	6 ;начать записывать в ЦАП
-;8/16	ErrorTwoOut	EQU	7 ;надо вывести если есть аварию двух пров
-	Switch10ms 	EQU	7 ;десять милисекунд по два раза
+	ErrorTwoOut	EQU	7 ;надо вывести если есть аварию двух пров
 StatePortA	db 1	;предыдущее состояние порта A //передавать след или предыдущий
 CountParitet	db 1
 FromCPU		db 1	;ячейка для анализа очереди приема
@@ -265,10 +264,9 @@ CounterTransmit db 1    ;счетчик для передачи
 
 ConstDiv	EQU	80	;через 80*2.5= 200 ms
 CounDivTransmit db 1	;счетчик деления передачи еще дополнительно вывод данных об очереди
-;изенено 03.06.98 ConstDiv20	EQU	8	;через 8*2.5= 20 ms
-ConstDiv20	EQU	4	;через 4*2.5= 10 ms
+ConstDiv20	EQU	8	;через 8*2.5= 20 ms
 CounDivTransmit20 db 1	;счетчик деления передачи еще дополнительно
-IamNow		EQU	128	;через 128*2.5=320.0 ms
+IamNow		EQU	255	;через 255*2.5=637.5 ms
 
 DelayOne	EQU	16	; единица в наборе номера 16*2.5=40 ms
 DelayNull	EQU	24	; ноль в наборе номера 24*2.5=60 ms
@@ -355,8 +353,7 @@ ItIsTransmit    db 1    ;есть ли данные для передачи
 NextData	db 1	;битовые утановки для загрузки следующего байта
 			;на передачу в канал
 NumberBegin	db 1	;битовые установки набора номера
-;8/16TokPokoya	db 1	;токи покоя
-MinDatchik	db 1	;вместо тока покоя храним датчики минуса
+TokPokoya	db 1	;токи покоя
 DataRele	db 1	;данные для реле или ЦАПа
 ;-----------------------------------------------
 ;//------------------------------------------------
@@ -406,7 +403,7 @@ LengthLineTransmit  equ 27H ;длина очереди
 ;// C0:TTTTTTTTTTTTTTTT 40      T - ячейки очереди передачи в ЦПУ
 ;// D0:TTTTTTTTTTTTTTTT 50      С - ячейки очереди приема из ЦПУ
 ;// E0:CCCCCCCCCCCCCCCC 60      P - Передача данных в линию
-;// F0:QQQQQQQQ000000S0 70      Q - очередь передачи (однобайтовая)
+;// F0:QQQQQQQQSSSSSSS0 70      Q - очередь передачи (однобайтовая)
 ;//
 ;//
 
@@ -464,6 +461,17 @@ TimerInterrupt:
 ;-------------------------------------------------------------
 ;Алгоритм с записью (передачей) и считыванием датчика минуса
 WithWrite:
+;извлечение данных передачи из очереди
+;8/16	BTFSS	FalseEnter,PuskRele
+;8/16	GOTO	NeRele
+;8/16	MOVF	DataRele,W
+;8/16	MOVWF	PORTD
+;8/16	BCF	FalseEnter,PuskRele
+;8/16	BCF	PORTCProm,WRR
+;8/16	MOVF	PORTCProm,W
+;8/16	MOVWF	PORTC           ;//задний строб записи
+				;//данные на порту D должны быть не менее 2 mks
+				;//сейчас около 3.6mks
 
 
 ;8/16 NeRele:
@@ -537,8 +545,8 @@ WithWrite:
 	IORLW	04H             ;8/16 adr =4
 	MOVWF	PORTC           ;8/16
 	ANDLW	(0FFH AND NOT(1 SHL STB)) ;8/16 stb=0
-	MOVWF	PORTC           ;8/16
 	MOVWF	PORTCProm       ;8/16
+	MOVWF	PORTC           ;8/16
 
 
 
@@ -550,48 +558,39 @@ WithWrite:
 	DECFSZ	CounDivTransmit20,F
 	GOTO	NeBudem
 
-	MOVF	ReadInterrupt,W	;датчики +
-	BSF	STATUS,RP0
-	IORWF   078H,W
-	MOVWF	079H
+	MOVLW	20H		;код состояние D+ D-
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
 
-	MOVLW	0FFH
-	XORWF	078H,F
+	BCF	STATUS,RP0
+	MOVF	ReadInterrupt,W	;датчики +
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
 
 	BCF	STATUS,RP0
 	MOVF	PORTB,W
-	MOVWF	MinDatchik
+;8/16	MOVWF   CounDivTransmit20 ;ne po pramomu naznacheniyu
+;8/16	BSF	PORTCProm,SMX	;perekluchaem na komparatori two-line regim
+;8/16	MOVF	PORTCProm,W
+;8/16	MOVWF	PORTC
 
-	BSF	STATUS,RP0
-	ANDWF   078H,W
-	MOVWF	07AH
-
-	BCF	STATUS,RP0
-	MOVF	ReadInterrupt,W	;датчики +
-	XORWF	MinDatchik,W
-	ANDWF	ReadInterrupt,W	;датчики +
-	BSF	STATUS,RP0
-	MOVWF	078H
-
-
-	BCF	STATUS,RP0
-	MOVLW	80H
-	XORWF   FalseEnter,F
-	BTFSC	FalseEnter,7
-	GOTO	ChetchikReload
-
-	MOVLW	20H		;код состояние D+ D-
+;8/16	MOVF    CounDivTransmit20,W ;ne po prjamomu naznacheniu
 ;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
-	CALL    PutWordTransmitGIE
+	CALL    PutWordTransmit
 
-	MOVF	079H,W
-	CALL    PutWordTransmitGIE
-
-	MOVF	07AH,W
-	CALL    PutWordTransmitGIE
-
-
-ChetchikReload:
+;8/16	MOVF	079H,W
+;8/16	MOVWF	078H
+;8/16	BCF	STATUS,RP0
+;8/16	MOVF	PORTB,W		;sostojanie avarii
+;8/16	BSF	STATUS,RP0
+;8/16	MOVWF	079H
+;8/16	ANDWF	078H,W
+;8/16	BTFSC	STATUS,Z
+;8/16	GOTO	NoErrorTwo
+;8/16	IORWF	07AH,F
+;8/16	BCF	STATUS,RP0
+;8/16	BSF	FalseEnter,ErrorTwoLine
+;8/16 NoErrorTwo:
 	BCF	STATUS,RP0
 	MOVLW	ConstDiv20
 	MOVWF 	CounDivTransmit20
@@ -610,8 +609,8 @@ NeBudem:
 	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
 	MOVF	QueueFull,W
 	CALL    PutWordTransmit
-;8/16	BCF	STATUS,RP0
-;8/16	BSF	FalseEnter,ErrorTwoOut
+	BCF	STATUS,RP0
+	BSF	FalseEnter,ErrorTwoOut
 	GOTO	VseChitali
 WhatIam:BSF	STATUS,RP0
 	DECFSZ	07EH,F
@@ -627,9 +626,6 @@ WhatIam:BSF	STATUS,RP0
 WithOutWrite:
 	MOVF	PORTB,W
 	MOVWF   ReadInterrupt
-	MOVLW	(1 SHL MUX)
-	IORWF   PORTCProm,W
-	MOVWF	PORTC
 VseChitali:
 	BCF	STATUS,RP0
 ;RC0	#WRTC21		- запись регистра второго банка передачи тока покоя
@@ -640,22 +636,12 @@ VseChitali:
 ;RC5	#WRTC11		- запись регистра первого банка передачи тока покоя
 ;RC6	TXD1		- передача последовательного порта
 ;RC7	RXD1            - прием    последовательного порта
+;8/16	BSF	PORTCProm,WRR
 	MOVLW	11100100B
 	ANDWF   PORTCProm,W
 	IORLW	00100100B
 	MOVWF	PORTCProm
-
-	MOVF	PORTB,W
-	MOVWF	MinDatchik
-
-	MOVF	PORTCProm,W
 	MOVWF	PORTC
-
-	MOVF	ReadInterrupt,W	;датчики +
-	XORWF	MinDatchik,W
-	ANDWF	MinDatchik,W	;датчики +
-	XORLW	0FFH
-	IORWF   ReadInterrupt,F
 
 ;------------------------------------------------
 ;считывание данных D+ и D- с порта B и заталкиване в очередь приема линии
@@ -721,7 +707,6 @@ PutWordTransmit:
 	BCF     INTCON,GIE
 	BTFSC   INTCON,GIE
 	GOTO    PutWordTransmit
-PutWordTransmitGIE:
 	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
 	MOVWF   TempForData
 	MOVF    HvostTransmit,W ;хвост очереди передачи->W
@@ -857,7 +842,6 @@ HookOne:
 HookZero:
 	BTFSC   StateKanal,0    ;Проверка  бита приема
 	RETLW   0
-        CLRF    INDF
 	INCF    FSR,F
 	INCF    FSR,F
 	INCF    INDF,F
@@ -865,28 +849,17 @@ HookZero:
 
 ;//==============================================
 HookSecondZero:
-        BTFSS   StateKanal,0
-	INCF    INDF,F
-        BTFSC   INDF,3
-        GOTO    StartFound
-
-	INCF    FSR,F     ;выходим на счетчик выхода на посылку
-        INCF    FSR,F     ;выходим на указатель функции
-	DECF    INDF,F    ;если сейчас единица, то вернемся назад HookZero
-	BTFSC   StateKanal,0    ;Проверка бита приема
-	RETLW   0         ;вылетаем на HookZero
-
-	INCF    INDF,F    ;пока усе нормально, остаемся здесь же
-	RETLW   0
-StartFound:
-        CLRF    INDF    ;обнуляем количество единиц
-	INCF    FSR,F   ;выходим к счетчику выхода на посылку
-	MOVLW   (GoingOnPosilka-9)  ;счетчик выхода на посылку
+	CLRF    INDF
+	INCF    FSR,F
+	MOVLW   (GoingOnPosilka-2)  ;счетчик выхода на посылку
 	MOVWF   INDF
-	INCF    FSR,F   ;выходим на указатель функции
-	INCF    INDF,F    ;пока усе нормально, уходим на анализ старта
+	INCF    FSR,F
+	DECF    INDF,F
+	BTFSC   StateKanal,0    ;Проверка бита приема
 	RETLW   0
-
+	INCF    INDF,F
+	INCF    INDF,F
+	RETLW   0
 ;//==============================================
 HookStart:
 	BTFSC   StateKanal,0
@@ -944,42 +917,29 @@ LastPosilka:
 	RRF	INDF,F
 	RRF	INDF,F
 	MOVLW	00011111B
-
-;//данные строки переделаны для сертификации
-
-	ANDWF	INDF,F    ;сечас данные заталкиваем сразу назад srtf
+	ANDWF	INDF,W
+	MOVWF	DataToCPU
 	DECF	FSR,F
-	INCF	INDF,F    ;номер функции увеличиваем
+	INCF	INDF,F
 	DECF	FSR,F
 	MOVLW	GoingOnPosilka  ;константа счетчика выхода на посылку
-	MOVWF   INDF      ;счетчик выхода на посылку перезагружаем
+	MOVWF   INDF
 	DECF	FSR,F
-	CLRF	INDF      ;счетчик единиц в выборке обнуляем
+	CLRF	INDF
+
+	MOVF	WhatHappy,W	;пришли данные с канала WhatHappy-номер канала
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+;//данную строчку ставить нельзя т.к. в прерывании данные тоже выводятся
+;//	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+
+	MOVF	DataToCPU,W     ;сами данные с канала 0
+;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
 	RETLW	1
-
-
-
-
-;srtf	ANDWF	INDF,W
-;srtf	MOVWF	DataToCPU
-;srtf	DECF	FSR,F
-;srtf	INCF	INDF,F
-;srtf	DECF	FSR,F
-;srtf	MOVLW	PolovinaPerioda+2	     ;/!!!GoingOnPosilka  ;константа счетчика выхода на посылку
-;srtf	MOVWF   INDF
-;srtf	DECF	FSR,F
-;srtf	CLRF	INDF
-;srtf
-;srtf	MOVF	WhatHappy,W	;пришли данные с канала WhatHappy-номер канала
-;srtf	CALL    PutWordTransmit
-;srtf
-;srtf	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
-;srtf
-;srtf	MOVF	DataToCPU,W     ;сами данные с канала 0
-;srtf	CALL    PutWordTransmit
-;srtf	BSF     INTCON,GIE      ;востанавливаем прерывания
-;srtf	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
-;srtf	RETLW	1
 ;//==============================================
 HookStop:
 	BTFSC   StateKanal,0
@@ -988,35 +948,15 @@ HookStop:
 	DECFSZ  INDF,F
 	RETLW   0
 	DECF    FSR,F
-
 	MOVLW   PolovinaPerioda ;Кoнстанта половины периода
 	SUBWF   INDF,W
 	BTFSS   STATUS,C
-
-;srtf;//проверку дробовых искажений пришлось вообще выкинуть на стопе
-;srtf	BTFSS   StateKanal,0
-;а потом опять вернуть
 	GOTO    NotStop
-;вывод данных будем вести теперь после стопа srtf
 	INCF    FSR,F
 	INCF    FSR,F
-	MOVLW	1      ;//следующий раз сразу ловим как после единички
+	MOVLW	1
 	MOVWF	INDF
-	INCF    FSR,F  ;выходим на байт данных
-        MOVF	INDF,W
-        MOVWF   DataToCPU
-
-	MOVF	WhatHappy,W	;пришли данные с канала WhatHappy-номер канала
-	CALL    PutWordTransmit
-
-	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
-
-	MOVF	DataToCPU,W     ;сами данные с канала 0
-	CALL    PutWordTransmit
-	BSF     INTCON,GIE      ;востанавливаем прерывания
-	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
-	RETLW	1
-
+	RETLW   0
 NotStop:
 	INCF    FSR,F
 	INCF    FSR,F
@@ -1276,35 +1216,35 @@ CaseCode6:
 	GOTO	SetNullKanal
 SetNullKanal0:
 	BSF	TrStateKanal,Line0
-;8/16	BSF	TokPokoya,Line0
+	BSF	TokPokoya,Line0
 	RETLW	0
 SetNullKanal1:
 	BSF	TrStateKanal,Line1
-;8/16	BSF	TokPokoya,Line1
+	BSF	TokPokoya,Line1
 	RETLW	0
 SetNullKanal2:
 	BSF	TrStateKanal,Line2
-;8/16	BSF	TokPokoya,Line2
+	BSF	TokPokoya,Line2
 	RETLW	0
 SetNullKanal3:
 	BSF	TrStateKanal,Line3
-;8/16	BSF	TokPokoya,Line3
+	BSF	TokPokoya,Line3
 	RETLW	0
 SetNullKanal4:
 	BSF	TrStateKanal,Line4
-;8/16	BSF	TokPokoya,Line4
+	BSF	TokPokoya,Line4
 	RETLW	0
 SetNullKanal5:
 	BSF	TrStateKanal,Line5
-;8/16	BSF	TokPokoya,Line5
+	BSF	TokPokoya,Line5
 	RETLW	0
 SetNullKanal6:
 	BSF	TrStateKanal,Line6
-;8/16	BSF	TokPokoya,Line6
+	BSF	TokPokoya,Line6
 	RETLW	0
 SetNullKanal7:
 	BSF	TrStateKanal,Line7
-;8/16	BSF	TokPokoya,Line7
+	BSF	TokPokoya,Line7
 	RETLW	0
 
 CaseCode7:
@@ -1313,35 +1253,35 @@ CaseCode7:
 	GOTO	SetOneKanal
 SetOneKanal0:
 	BCF	TrStateKanal,Line0
-;8/16	BCF	TokPokoya,Line0
+	BCF	TokPokoya,Line0
 	RETLW	0
 SetOneKanal1:
 	BCF	TrStateKanal,Line1
-;8/16	BCF	TokPokoya,Line1
+	BCF	TokPokoya,Line1
 	RETLW	0
 SetOneKanal2:
 	BCF	TrStateKanal,Line2
-;8/16	BCF	TokPokoya,Line2
+	BCF	TokPokoya,Line2
 	RETLW	0
 SetOneKanal3:
 	BCF	TrStateKanal,Line3
-;8/16	BCF	TokPokoya,Line3
+	BCF	TokPokoya,Line3
 	RETLW	0
 SetOneKanal4:
 	BCF	TrStateKanal,Line4
-;8/16	BCF	TokPokoya,Line4
+	BCF	TokPokoya,Line4
 	RETLW	0
 SetOneKanal5:
 	BCF	TrStateKanal,Line5
-;8/16	BCF	TokPokoya,Line5
+	BCF	TokPokoya,Line5
 	RETLW	0
 SetOneKanal6:
 	BCF	TrStateKanal,Line6
-;8/16	BCF	TokPokoya,Line6
+	BCF	TokPokoya,Line6
 	RETLW	0
 SetOneKanal7:
 	BCF	TrStateKanal,Line7
-;8/16	BCF	TokPokoya,Line7
+	BCF	TokPokoya,Line7
 	RETLW	0
 
 CaseCode8:
@@ -1542,6 +1482,10 @@ Begin1:
 ;процедура начальной инициализации
 ;//InitGlobalProc:
 	BCF	STATUS,RP0
+;8/16	BCF	PORTCProm,EnableRele
+;8/16	BSF	PORTCProm,WRR
+;8/16	MOVF	PORTCProm,W
+;8/16	MOVWF	PORTC
 
 
 
@@ -1650,7 +1594,7 @@ Begin1:
 
 	MOVLW   0FFH
 	MOVWF	TrStateKanal	;//отбой всех каналов
-;8/16	MOVWF	TokPokoya	;//включение везде тока покоя
+	MOVWF	TokPokoya	;//включение везде тока покоя
 	;//
 
 ;загрузка порта A
@@ -2768,65 +2712,65 @@ CPUNoChange:
 CPUReceveFuck:
 
 ;analis error two-line regim
-;8/16	BCF	STATUS,RP0
-;8/16	BTFSS	FalseEnter,ErrorTwoLine
-;8/16	GOTO	NoErrorTwoLine
-;8/16	BCF     FalseEnter,ErrorTwoLine
+	BCF	STATUS,RP0
+	BTFSS	FalseEnter,ErrorTwoLine
+	GOTO	NoErrorTwoLine
+	BCF     FalseEnter,ErrorTwoLine
 
-;8/16	BSF	STATUS,RP0
+	BSF	STATUS,RP0
 
-;8/16	MOVF	07AH,W		;dannie about error two-line regim
+	MOVF	07AH,W		;dannie about error two-line regim
 
-;8/16	MOVWF	07BH
-;8/16	MOVWF	07CH
+	MOVWF	07BH
+	MOVWF	07CH
 
 
-;8/16	RRF	07BH,F
-;8/16	RLF	07DH,F
+	RRF	07BH,F
+	RLF	07DH,F
 
-;8/16	RRF	07BH,F
-;8/16	RLF	07DH,F
+	RRF	07BH,F
+	RLF	07DH,F
 
-;8/16	RRF	07BH,F
-;8/16	RLF	07DH,F
+	RRF	07BH,F
+	RLF	07DH,F
 
-;8/16	RRF	07BH,F
-;8/16	RLF	07DH,F
+	RRF	07BH,F
+	RLF	07DH,F
 
-;8/16	SWAPF	07DH,F
+	SWAPF	07DH,F
 
-;8/16	RLF	07CH,F
-;8/16	RRF	07DH,F
+	RLF	07CH,F
+	RRF	07DH,F
 
-;8/16	RLF	07CH,F
-;8/16	RRF	07DH,F
+	RLF	07CH,F
+	RRF	07DH,F
 
-;8/16	RLF	07CH,F
-;8/16	RRF	07DH,F
+	RLF	07CH,F
+	RRF	07DH,F
 
-;8/16	RLF	07CH,F
-;8/16	RRF	07DH,W
+	RLF	07CH,F
+	RRF	07DH,W
 
-;8/16	BCF	STATUS,RP0
-;8/16	IORWF	TrStateKanal,F
-;8/16	IORWF	TokPokoya,F
-;8/16NoErrorTwoLine:
+	BCF	STATUS,RP0
+	IORWF	TrStateKanal,F
+	IORWF	TokPokoya,F
+NoErrorTwoLine:
 
-;8/16	BTFSS	FalseEnter,ErrorTwoOut
-;8/16	GOTO	NoErrorTwoOut
+	BTFSS	FalseEnter,ErrorTwoOut
+	GOTO	NoErrorTwoOut
 
-;8/16	MOVLW	70H
-;8/16	CALL    PutWordTransmit
-;8/16	MOVF	07AH,W		;dannie about error two-line regim
-;8/16	CLRF	07AH
-;8/16	BCF	STATUS,RP0
-;8/16	BCF     FalseEnter,ErrorTwoOut
+	MOVLW	70H
+	CALL    PutWordTransmit
+	MOVF	07AH,W		;dannie about error two-line regim
+	CLRF	07AH
+	BCF	STATUS,RP0
+	BCF     FalseEnter,ErrorTwoOut
 ;//данную команду ставить нельзя т.к. в прерывании также выводятся данные
 ;//	BSF     INTCON,GIE      ;востанавливаем прерывания
 
-;8/16	CALL    PutWordTransmit
-;8/16	BSF     INTCON,GIE      ;востанавливаем прерывания
-;8/16NoErrorTwoOut:
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+NoErrorTwoOut:
 ;--------------------------------------------------
 ;запись данных в ЦАП
 	BCF	STATUS,RP0
