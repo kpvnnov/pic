@@ -1,6 +1,11 @@
 16c71
 
 DEBUG   EQU     1 ;константа отладки в готовом коде 0
+; 2.1
+; 13 июля 2000 года
+; добавлена обработка аварии четырех проводного режима
+;
+; 2.0
 ; 13 декабря 1997 года
 ; В исходнике были сделаны изменения помеченые 8/16
 ; для новой платы
@@ -569,28 +574,40 @@ WithWrite:
 
 	BCF	STATUS,RP0
 	MOVF	PORTB,W
-;8/16	MOVWF   CounDivTransmit20 ;ne po pramomu naznacheniyu
+	MOVWF   CounDivTransmit20 ;ne po pramomu naznacheniyu
+
 ;8/16	BSF	PORTCProm,SMX	;perekluchaem na komparatori two-line regim
 ;8/16	MOVF	PORTCProm,W
 ;8/16	MOVWF	PORTC
 
-;8/16	MOVF    CounDivTransmit20,W ;ne po prjamomu naznacheniu
+	MOVF	PORTCProm,W
+	IORLW	(1 SHL STB)	;8/16 stb=1
+	MOVWF	PORTC
+	ANDLW	0F8H 		;8/16 adr =0
+	IORLW	06H             ;8/16 adr =6
+	MOVWF	PORTC           ;8/16
+	ANDLW	(0FFH AND NOT(1 SHL STB)) ;8/16 stb=0
+	MOVWF	PORTCProm       ;8/16
+	MOVWF	PORTC           ;8/16
+
+	MOVF    CounDivTransmit20,W ;ne po prjamomu naznacheniu
 ;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
 	CALL    PutWordTransmit
 
-;8/16	MOVF	079H,W
-;8/16	MOVWF	078H
-;8/16	BCF	STATUS,RP0
-;8/16	MOVF	PORTB,W		;sostojanie avarii
-;8/16	BSF	STATUS,RP0
-;8/16	MOVWF	079H
-;8/16	ANDWF	078H,W
-;8/16	BTFSC	STATUS,Z
-;8/16	GOTO	NoErrorTwo
-;8/16	IORWF	07AH,F
-;8/16	BCF	STATUS,RP0
-;8/16	BSF	FalseEnter,ErrorTwoLine
-;8/16 NoErrorTwo:
+	MOVF	079H,W
+	MOVWF	078H
+	BCF	STATUS,RP0
+	MOVF	PORTB,W		;sostojanie avarii
+	XORLW	0FFH
+	BSF	STATUS,RP0
+	MOVWF	079H
+	ANDWF	078H,W
+	BTFSC	STATUS,Z
+	GOTO	NoErrorTwo
+	IORWF	07AH,F
+	BCF	STATUS,RP0
+	BSF	FalseEnter,ErrorTwoLine
+NoErrorTwo:
 	BCF	STATUS,RP0
 	MOVLW	ConstDiv20
 	MOVWF 	CounDivTransmit20
@@ -617,7 +634,16 @@ WhatIam:BSF	STATUS,RP0
 	GOTO	VseChitali
 ;//	MOVLW	IamNow
 ;//	MOVWF	07EH
-	MOVLW	30H		;код синхронизации
+
+;с сегоднешнего дня 13.07.00 код синхронизации будет являться
+; и кодом версии прошивки
+; 30H - код стандартный 2.0
+; 31h - код подправленный на реакцию аварии в 4-х проводном режиме
+;	2.1
+
+;	MOVLW	30H		;код синхронизации 2.0
+	MOVLW	31H		;код синхронизации 2.1
+
 ;//	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
 	CALL    PutWordTransmit
 	GOTO	VseChitali
@@ -2722,6 +2748,17 @@ CPUReceveFuck:
 	MOVF	07AH,W		;dannie about error two-line regim
 
 	MOVWF	07BH
+
+;делаем операцию или для битов 0+2, и 1+3
+;биты оставляем на месте 0 и 1
+	RRF	07BH,F
+	RRF	07BH,W
+	ANDLW	003H
+	IORWF	07AH,W
+	MOVWF	07BH
+;версия сделана по требованию димы 12.07.00
+;операцию закончили
+
 	MOVWF	07CH
 
 
