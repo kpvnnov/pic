@@ -234,7 +234,6 @@ LineMask6	EQU	00100000B
 LineMask7	EQU	00010000B
 
 PolovinaPerioda         EQU     25   ;Кoнстанта половины периода
-PolovinaPoloviniPerioda EQU	13
 GoingOnPosilka          EQU     50   ;константа счетчика выхода на посылку
 DATA
 ORG 21H
@@ -933,29 +932,42 @@ LastPosilka:
 	RRF	INDF,F
 	RRF	INDF,F
 	MOVLW	00011111B
-	ANDWF	INDF,W
-	MOVWF	DataToCPU
-	DECF	FSR,F
-	INCF	INDF,F
-	DECF	FSR,F
-	MOVLW	PolovinaPerioda+2	     ;/!!!GoingOnPosilka  ;константа счетчика выхода на посылку
-	MOVWF   INDF
-	DECF	FSR,F
-	CLRF	INDF
 
-	MOVF	WhatHappy,W	;пришли данные с канала WhatHappy-номер канала
-;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
-	CALL    PutWordTransmit
-;//данную строчку ставить нельзя т.к. в прерывании данные тоже выводятся
-;//	BSF     INTCON,GIE      ;востанавливаем прерывания
-	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+;//данные строки переделаны для сертификации
 
-	MOVF	DataToCPU,W     ;сами данные с канала 0
-;	BSF     STATUS,RP0      ;в процедуре обращение к первой странице
-	CALL    PutWordTransmit
-	BSF     INTCON,GIE      ;востанавливаем прерывания
-	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+	ANDWF	INDF,F    ;сечас данные заталкиваем сразу назад srtf
+	DECF	FSR,F
+	INCF	INDF,F    ;номер функции увеличиваем
+	DECF	FSR,F
+	MOVLW	PolovinaPerioda     ;/!!!GoingOnPosilka  ;константа счетчика выхода на посылку
+	MOVWF   INDF      ;счетчик выхода на посылку перезагружаем
+	DECF	FSR,F
+	CLRF	INDF      ;счетчик единиц в выборке обнуляем
 	RETLW	1
+
+
+
+
+;srtf	ANDWF	INDF,W
+;srtf	MOVWF	DataToCPU
+;srtf	DECF	FSR,F
+;srtf	INCF	INDF,F
+;srtf	DECF	FSR,F
+;srtf	MOVLW	PolovinaPerioda+2	     ;/!!!GoingOnPosilka  ;константа счетчика выхода на посылку
+;srtf	MOVWF   INDF
+;srtf	DECF	FSR,F
+;srtf	CLRF	INDF
+;srtf
+;srtf	MOVF	WhatHappy,W	;пришли данные с канала WhatHappy-номер канала
+;srtf	CALL    PutWordTransmit
+;srtf
+;srtf	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+;srtf
+;srtf	MOVF	DataToCPU,W     ;сами данные с канала 0
+;srtf	CALL    PutWordTransmit
+;srtf	BSF     INTCON,GIE      ;востанавливаем прерывания
+;srtf	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+;srtf	RETLW	1
 ;//==============================================
 HookStop:
 	BTFSC   StateKanal,0
@@ -964,15 +976,33 @@ HookStop:
 	DECFSZ  INDF,F
 	RETLW   0
 	DECF    FSR,F
-	MOVLW   PolovinaPoloviniPerioda;/!!! PolovinaPerioda ;Кoнстанта половины периода
-	SUBWF   INDF,W
-	BTFSS   STATUS,C
+
+;srtf	MOVLW   1          ;/!!! PolovinaPerioda ;Кoнстанта половины периода
+;srtf	SUBWF   INDF,W
+;srtf	BTFSS   STATUS,C
+;//проверку дробовых искажений пришлось вообще выкинуть на стопе
+	BTFSS   StateKanal,0
 	GOTO    NotStop
+;вывод данных будем вести теперь после стопа srtf
 	INCF    FSR,F
 	INCF    FSR,F
-	MOVLW	1
+	MOVLW	1      ;//следующий раз сразу ловим как после единички
 	MOVWF	INDF
-	RETLW   0
+	INCF    FSR,F  ;выходим на байт данных
+        MOVF	INDF,W
+        MOVWF   DataToCPU
+
+	MOVF	WhatHappy,W	;пришли данные с канала WhatHappy-номер канала
+	CALL    PutWordTransmit
+
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+
+	MOVF	DataToCPU,W     ;сами данные с канала 0
+	CALL    PutWordTransmit
+	BSF     INTCON,GIE      ;востанавливаем прерывания
+	BCF     STATUS,RP0      ;в процедуре обращение к первой странице
+	RETLW	1
+
 NotStop:
 	INCF    FSR,F
 	INCF    FSR,F
