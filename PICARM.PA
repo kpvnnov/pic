@@ -41,31 +41,30 @@ PORTA   equ     05H
 PORTB   equ     06H
 PORTC   equ     07H
 	BeginStateC	EQU	01000000B
-;RC0	#WRTC21		- запись регистра второго банка передачи тока покоя
-;RC1	#WRR1		- запуск одновибратора импульса переключения реле
-;RC2    #RS
-;RC3	#SMX1		- включение мультиплексора D+ D-
-;RC4	SEL1	(MUX)	- выбор D+ или D- с помощью мультиплексора
-;RC5	#WRTC11		- запись регистра первого банка передачи тока покоя
+;RC0	RC0		- запись регистра второго банка передачи тока покоя
+;RC1	RC1		- запуск одновибратора импульса переключения реле
+;RC2    RC2
+;RC3	#STB		- строб записи сигнала по адресу RC0-1-2
+;RC4	SEL	(MUX)	- выбор D+ или D- с помощью мультиплексора
+;			  и одновременно сигнал #WR/RD
+;RC5	#CSD2		- выбор второго DAC
 ;RC6	TXD1		- передача последовательного порта
 ;RC7	RXD1            - прием    последовательного порта
-	WRR		EQU	1
-	SMX		EQU     3	;//Danger Two-line regim
+
 	MUX		EQU	4	;//разряд управления мультиплексором
-	WRTC11		EQU	5
-	WRTC21		EQU	0
-	EnableRele	EQU	2
-;	DataTransmBit 	EQU 02H	;//бит передачи (мультип)
-;	StrobeTransm    EQU 01H ;//бит стробирования
+	CSD2		EQU	5
 PORTD   equ     08H
 PORTE   equ     09H
 	BeginStateE	EQU	00000100B	;начальное состояние порта E
-	DAC_CSS		EQU	2
-	DAC_CLC		EQU	1
+;RE0	SDD		- данные для DAC-ов
+;RE1	CLD		- синхро для DAC-ов
+;RE2	#CSD1		- выбор первого DAC-а
 	DAC_DATA	EQU	0
+	DAC_CLC		EQU	1
+	DAC_CSS		EQU	2
 PCLATH  equ     0AH
 INTCON  equ     0BH
-        ;биты управляющего регистра прерываний
+	;биты управляющего регистра прерываний
 	GIE     equ     7
 	PEIE    equ     6
         T0IE    equ     5
